@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solis 50kW Hybrid Inverter — Dashboard</title>
+    <title>Microgrid Remote Monitor — Solis + Eastron</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
         :root {
@@ -264,6 +264,41 @@
             font-weight: 500;
         }
 
+        /* Section divider */
+        .section-divider {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: 8px 0;
+        }
+        .section-divider h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .section-divider hr {
+            flex: 1;
+            border: none;
+            border-top: 1px solid var(--border);
+        }
+        .section-divider .device-tag {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .tag-solis { background: rgba(234,179,8,0.15); color: var(--accent-yellow); }
+        .tag-eastron { background: rgba(6,182,212,0.15); color: var(--accent-cyan); }
+
+        /* Eastron meter grid */
+        .meter-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
             .top-row { grid-template-columns: 1fr; }
@@ -276,15 +311,22 @@
 
 <!-- Header -->
 <div class="header">
-    <h1><span>&#9883;</span> Solis 50kW Hybrid Inverter</h1>
+    <h1><span>&#9883;</span> Microgrid Remote Monitor</h1>
     <div class="header-status">
         <span id="conn-status"><span class="status-dot warn"></span>Connecting...</span>
+        <span id="eastron-conn" style="margin-left:8px;"><span class="status-dot warn"></span>Meter...</span>
         <span id="last-update">--</span>
     </div>
 </div>
 
 <!-- Dashboard -->
 <div class="dashboard">
+
+    <!-- === SOLIS INVERTER SECTION === -->
+    <div class="section-divider">
+        <span class="device-tag tag-solis">Solis S6 50kW Hybrid</span>
+        <hr>
+    </div>
 
     <!-- Top row: SoC + key metrics -->
     <div class="top-row">
@@ -404,6 +446,78 @@
                     <tr><td>DC Bus Voltage</td><td id="dcBusV">--</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- === EASTRON ENERGY METER SECTION === -->
+    <div class="section-divider" style="margin-top:12px;">
+        <span class="device-tag tag-eastron">Eastron SDM630MCT</span>
+        <hr>
+    </div>
+
+    <!-- Meter key metrics -->
+    <div class="meter-summary">
+        <div class="metric">
+            <div class="metric-icon" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan);">&#9889;</div>
+            <div class="metric-label">Total Power</div>
+            <div class="metric-value" id="mtrTotalPwr">--<span class="metric-unit">W</span></div>
+            <div class="metric-sub">PF: <span id="mtrTotalPf">--</span></div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon" style="background:rgba(249,115,22,0.15);color:var(--accent-orange);">&#8594;</div>
+            <div class="metric-label">Import Energy</div>
+            <div class="metric-value" id="mtrImportKwh">--<span class="metric-unit">kWh</span></div>
+            <div class="metric-sub">Reactive: <span id="mtrImportKvarh">--</span> kVArh</div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon" style="background:rgba(34,197,94,0.15);color:var(--accent-green);">&#8592;</div>
+            <div class="metric-label">Export Energy</div>
+            <div class="metric-value" id="mtrExportKwh">--<span class="metric-unit">kWh</span></div>
+            <div class="metric-sub">Reactive: <span id="mtrExportKvarh">--</span> kVArh</div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon" style="background:rgba(168,85,247,0.15);color:var(--accent-purple);">&#931;</div>
+            <div class="metric-label">Total Energy</div>
+            <div class="metric-value" id="mtrTotalKwh">--<span class="metric-unit">kWh</span></div>
+            <div class="metric-sub">Freq: <span id="mtrFreq">--</span> Hz</div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon" style="background:rgba(59,130,246,0.15);color:var(--accent-blue);">V</div>
+            <div class="metric-label">Avg Voltage (L-N)</div>
+            <div class="metric-value" id="mtrVoltAvg">--<span class="metric-unit">V</span></div>
+            <div class="metric-sub">L-L: <span id="mtrVoltLLAvg">--</span> V</div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon" style="background:rgba(239,68,68,0.15);color:var(--accent-red);">A</div>
+            <div class="metric-label">Neutral Current</div>
+            <div class="metric-value" id="mtrNeutral">--<span class="metric-unit">A</span></div>
+            <div class="metric-sub">Sum: <span id="mtrCurrentSum">--</span> A</div>
+        </div>
+    </div>
+
+    <!-- Meter phase details + charts -->
+    <div class="charts-row">
+        <div class="card">
+            <div class="card-title">Meter — Phase Details</div>
+            <table class="pv-table">
+                <thead><tr><th>Phase</th><th>Voltage</th><th>Current</th><th>Power</th><th>PF</th><th>V THD</th><th>I THD</th></tr></thead>
+                <tbody>
+                    <tr><td>L1</td><td id="mtrV1">--</td><td id="mtrI1">--</td><td id="mtrP1">--</td><td id="mtrPf1">--</td><td id="mtrThdV1">--</td><td id="mtrThdI1">--</td></tr>
+                    <tr><td>L2</td><td id="mtrV2">--</td><td id="mtrI2">--</td><td id="mtrP2">--</td><td id="mtrPf2">--</td><td id="mtrThdV2">--</td><td id="mtrThdI2">--</td></tr>
+                    <tr><td>L3</td><td id="mtrV3">--</td><td id="mtrI3">--</td><td id="mtrP3">--</td><td id="mtrPf3">--</td><td id="mtrThdV3">--</td><td id="mtrThdI3">--</td></tr>
+                </tbody>
+            </table>
+            <div style="margin-top:12px;">
+                <div class="status-bar">
+                    <div class="status-item">L1-L2: <strong id="mtrV12">--</strong> V</div>
+                    <div class="status-item">L2-L3: <strong id="mtrV23">--</strong> V</div>
+                    <div class="status-item">L3-L1: <strong id="mtrV31">--</strong> V</div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">Meter — Power History</div>
+            <div class="chart-container"><canvas id="chartMeterPower"></canvas></div>
         </div>
     </div>
 
@@ -530,6 +644,56 @@ const powerChart = new Chart(document.getElementById('chartPower'), {
         ]
     },
     options: chartOpts
+});
+
+// =========================================================================
+// Eastron Meter Chart
+// =========================================================================
+const meterPowerChart = new Chart(document.getElementById('chartMeterPower'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            {
+                label: 'Meter Power (W)',
+                data: [],
+                borderColor: '#06b6d4',
+                backgroundColor: 'rgba(6,182,212,0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+            },
+            {
+                label: 'Import (kWh)',
+                data: [],
+                borderColor: '#f97316',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+                yAxisID: 'y1',
+            },
+            {
+                label: 'Export (kWh)',
+                data: [],
+                borderColor: '#22c55e',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+                yAxisID: 'y1',
+            }
+        ]
+    },
+    options: {
+        ...chartOpts,
+        scales: {
+            ...chartOpts.scales,
+            y1: {
+                position: 'right',
+                ticks: { color: '#64748b' },
+                grid: { display: false },
+            }
+        }
+    }
 });
 
 // =========================================================================
@@ -694,15 +858,97 @@ function updateCharts(h) {
 }
 
 // =========================================================================
+// Eastron data fetching
+// =========================================================================
+let lastEastronData = {};
+
+async function fetchEastronData() {
+    try {
+        const res = await fetch('/api/eastron/data');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const d = await res.json();
+        lastEastronData = d;
+        updateEastronDashboard(d);
+        updateEastronStatus(true);
+    } catch (e) {
+        console.error('Eastron fetch error:', e);
+        updateEastronStatus(false);
+    }
+}
+
+async function fetchEastronHistory() {
+    try {
+        const res = await fetch('/api/eastron/history');
+        if (!res.ok) return;
+        const h = await res.json();
+        updateEastronCharts(h);
+    } catch (e) { /* ignore */ }
+}
+
+function updateEastronStatus(ok) {
+    const el = document.getElementById('eastron-conn');
+    if (ok && lastEastronData._read_ok) {
+        el.innerHTML = '<span class="status-dot ok"></span>Meter';
+    } else if (ok) {
+        el.innerHTML = '<span class="status-dot warn"></span>Meter';
+    } else {
+        el.innerHTML = '<span class="status-dot err"></span>Meter';
+    }
+}
+
+function updateEastronDashboard(d) {
+    // Key metrics
+    document.getElementById('mtrTotalPwr').innerHTML = fmt(d.total_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('mtrTotalPf').textContent = fmt(d.total_pf, 3);
+    document.getElementById('mtrImportKwh').innerHTML = fmt(d.import_kwh, 1) + '<span class="metric-unit">kWh</span>';
+    document.getElementById('mtrImportKvarh').textContent = fmt(d.import_kvarh, 1);
+    document.getElementById('mtrExportKwh').innerHTML = fmt(d.export_kwh, 1) + '<span class="metric-unit">kWh</span>';
+    document.getElementById('mtrExportKvarh').textContent = fmt(d.export_kvarh, 1);
+    document.getElementById('mtrTotalKwh').innerHTML = fmt(d.total_kwh, 1) + '<span class="metric-unit">kWh</span>';
+    document.getElementById('mtrFreq').textContent = fmt(d.frequency, 2);
+    document.getElementById('mtrVoltAvg').innerHTML = fmt(d.voltage_avg, 1) + '<span class="metric-unit">V</span>';
+    document.getElementById('mtrVoltLLAvg').textContent = fmt(d.voltage_ll_avg, 1);
+    document.getElementById('mtrNeutral').innerHTML = fmt(d.neutral_current, 2) + '<span class="metric-unit">A</span>';
+    document.getElementById('mtrCurrentSum').textContent = fmt(d.current_sum, 1);
+
+    // Phase details
+    for (let i = 1; i <= 3; i++) {
+        document.getElementById('mtrV' + i).textContent = fmt(d['voltage_l' + i], 1) + ' V';
+        document.getElementById('mtrI' + i).textContent = fmt(d['current_l' + i], 2) + ' A';
+        document.getElementById('mtrP' + i).textContent = fmt(d['power_l' + i], 0) + ' W';
+        document.getElementById('mtrPf' + i).textContent = fmt(d['pf_l' + i], 3);
+        document.getElementById('mtrThdV' + i).textContent = fmt(d['thd_voltage_l' + i], 1) + '%';
+        document.getElementById('mtrThdI' + i).textContent = fmt(d['thd_current_l' + i], 1) + '%';
+    }
+
+    // Line-to-line voltages
+    document.getElementById('mtrV12').textContent = fmt(d.voltage_l1_l2, 1);
+    document.getElementById('mtrV23').textContent = fmt(d.voltage_l2_l3, 1);
+    document.getElementById('mtrV31').textContent = fmt(d.voltage_l3_l1, 1);
+}
+
+function updateEastronCharts(h) {
+    meterPowerChart.data.labels = h.timestamps;
+    meterPowerChart.data.datasets[0].data = h.total_power;
+    meterPowerChart.data.datasets[1].data = h.import_kwh;
+    meterPowerChart.data.datasets[2].data = h.export_kwh;
+    meterPowerChart.update('none');
+}
+
+// =========================================================================
 // Polling loops
 // =========================================================================
 fetchData();
 fetchHistory();
 fetchStatus();
+fetchEastronData();
+fetchEastronHistory();
 
 setInterval(fetchData, POLL_MS);
-setInterval(fetchHistory, 60000);   // history once per minute
-setInterval(fetchStatus, 30000);    // status every 30s
+setInterval(fetchHistory, 60000);
+setInterval(fetchStatus, 30000);
+setInterval(fetchEastronData, POLL_MS);
+setInterval(fetchEastronHistory, 60000);
 </script>
 </body>
 </html>

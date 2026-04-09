@@ -38,7 +38,7 @@ echo "[4/4] Installing systemd service..."
 SERVICE_FILE="/etc/systemd/system/solis-monitor.service"
 sudo tee "$SERVICE_FILE" > /dev/null <<SERVICEEOF
 [Unit]
-Description=Solis Inverter Modbus TCP Monitor
+Description=Microgrid Remote Monitor (Solis + Eastron)
 After=network-online.target
 Wants=network-online.target
 
@@ -46,7 +46,7 @@ Wants=network-online.target
 Type=simple
 User=$USER
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$VENV_DIR/bin/python app.py --inverter-ip 192.168.1.100 --inverter-port 502 --slave-id 1 --poll-interval 5
+ExecStart=$VENV_DIR/bin/python app.py --gateway-ip 192.168.1.100 --gateway-port 502 --solis-id 1 --eastron-id 2 --solis-poll 5 --eastron-poll 5
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -64,9 +64,10 @@ echo "============================================"
 echo " Setup complete!"
 echo "============================================"
 echo ""
-echo " IMPORTANT: Edit the inverter IP address in the service file:"
+echo " IMPORTANT: Edit the gateway IP and device IDs in the service file:"
 echo "   sudo nano $SERVICE_FILE"
-echo "   (change --inverter-ip to your inverter/gateway IP)"
+echo "   (change --gateway-ip to your Modbus TCP gateway IP)"
+echo "   (change --solis-id / --eastron-id if your slave IDs differ)"
 echo ""
 echo " Then start the service:"
 echo "   sudo systemctl start solis-monitor"

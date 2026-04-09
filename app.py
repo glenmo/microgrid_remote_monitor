@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
-Solis 50kW Hybrid Inverter Modbus TCP Monitor
-==============================================
-Reads key registers from the Solis inverter via Modbus TCP/IP
-and serves a real-time dashboard via Flask.
+Microgrid Remote Monitor — Solis Inverter + Eastron Energy Meter
+================================================================
+Reads registers from:
+  1. Solis 50kW Hybrid Inverter — via Modbus TCP (function code 0x04)
+  2. Eastron SDM630MCT V2 Energy Meter — via same Modbus TCP gateway
 
-Registers are read using function code 0x04 (Read Input Registers).
-Register addresses match the Solis RS485_MODBUS protocol doc v3.1
-with no offset required.
+Both devices share the same RS485 bus and Modbus TCP gateway but use
+different slave/device IDs.
 
 Usage:
-    python app.py --host 0.0.0.0 --port 5000 --inverter-ip 192.168.1.100 --inverter-port 502 --slave-id 1
+    python app.py --host 0.0.0.0 --port 5000 \\
+                  --gateway-ip 192.168.1.100 --gateway-port 502 \\
+                  --solis-id 1 --eastron-id 2
 """
 
 import argparse
@@ -26,9 +28,11 @@ from flask import Flask, jsonify, render_template, request
 from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ModbusIOException
 
+from eastron_reader import EastronModbusReader
+
 # NOTE: pymodbus v3.6+ uses 'device_id' parameter.
 # If using an older version (v3.0-3.5), change 'device_id' to 'slave' in
-# the read_input_registers() call in _read_registers_batch() below.
+# the read_input_registers() calls in both this file and eastron_reader.py.
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -384,9 +388,10 @@ class SolisModbusReader:
 
 
 # ---------------------------------------------------------------------------
-# Global reader instance (created in main)
+# Global reader instances (created in main)
 # ---------------------------------------------------------------------------
 reader: SolisModbusReader = None
+eastron: EastronModbusReader = None
 
 
 # ---------------------------------------------------------------------------
@@ -423,38 +428,106 @@ def api_status():
 
 
 # ---------------------------------------------------------------------------
+# Eastron SDM630MCT API routes
+# ---------------------------------------------------------------------------
+@app.route("/api/eastron/data")
+def api_eastron_data():
+    """Return current Eastron meter data as JSON."""
+    if eastron is None:
+        return jsonify({"error": "Eastron reader not initialised"}), 503
+    return jsonify(eastron.get_data())
+
+
+@app.route("/api/eastron/history")
+def api_eastron_history():
+    """Return Eastron historical data for charts."""
+    if eastron is None:
+        return jsonify({"error": "Eastron reader not initialised"}), 503
+    return jsonify(eastron.get_history())
+
+
+@app.route("/api/eastron/status")
+def api_eastron_status():
+    """Return Eastron connection/polling status."""
+    if eastron is None:
+        return jsonify({"error": "Eastron reader not initialised"}), 503
+    return jsonify(eastron.get_status())
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-def create_reader(args):
-    """Create and return a SolisModbusReader from parsed args."""
-    return SolisModbusReader(
-        inverter_ip=args.inverter_ip,
-        inverter_port=args.inverter_port,
-        slave_id=args.slave_id,
-        poll_interval=args.poll_interval,
+def main():
+    global reader, eastron
+
+    parser = argparse.ArgumentParser(
+        description="Microgrid Remote Monitor — Solis Inverter + Eastron Energy Meter"
     )
 
+    # Web server
+    parser.add_argument("--host", default="0.0.0.0",
+                        help="Flask listen address (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=5000,
+                        help="Flask listen port (default: 5000)")
 
-def main():
-    global reader
-
-    parser = argparse.ArgumentParser(description="Solis Inverter Modbus TCP Monitor")
-    parser.add_argument("--host", default="0.0.0.0", help="Flask listen address (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=5000, help="Flask listen port (default: 5000)")
-    parser.add_argument("--inverter-ip", default="192.168.1.100",
-                        help="Solis inverter / Modbus gateway IP address")
-    parser.add_argument("--inverter-port", type=int, default=502,
+    # Modbus TCP gateway (shared by both devices)
+    parser.add_argument("--gateway-ip", default="192.168.1.100",
+                        help="Modbus TCP gateway IP address (default: 192.168.1.100)")
+    parser.add_argument("--gateway-port", type=int, default=502,
                         help="Modbus TCP port (default: 502)")
-    parser.add_argument("--slave-id", type=int, default=1,
-                        help="Modbus slave/unit ID of the inverter (default: 1)")
-    parser.add_argument("--poll-interval", type=int, default=5,
-                        help="Seconds between Modbus polls (default: 5)")
-    parser.add_argument("--debug", action="store_true", help="Enable Flask debug mode")
+
+    # Solis inverter
+    parser.add_argument("--solis-id", type=int, default=1,
+                        help="Modbus slave/device ID of the Solis inverter (default: 1)")
+    parser.add_argument("--solis-poll", type=int, default=5,
+                        help="Solis poll interval in seconds (default: 5)")
+    parser.add_argument("--no-solis", action="store_true",
+                        help="Disable the Solis inverter reader")
+
+    # Eastron energy meter
+    parser.add_argument("--eastron-id", type=int, default=2,
+                        help="Modbus slave/device ID of the Eastron meter (default: 2)")
+    parser.add_argument("--eastron-poll", type=int, default=5,
+                        help="Eastron poll interval in seconds (default: 5)")
+    parser.add_argument("--no-eastron", action="store_true",
+                        help="Disable the Eastron meter reader")
+
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable Flask debug mode")
+
+    # Legacy compatibility: support old --inverter-ip / --slave-id args
+    parser.add_argument("--inverter-ip", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--inverter-port", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--slave-id", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--poll-interval", type=int, default=None, help=argparse.SUPPRESS)
 
     args = parser.parse_args()
 
-    reader = create_reader(args)
-    reader.start()
+    # Legacy arg mapping
+    gw_ip = args.inverter_ip or args.gateway_ip
+    gw_port = args.inverter_port or args.gateway_port
+    solis_id = args.slave_id or args.solis_id
+    solis_poll = args.poll_interval or args.solis_poll
+
+    # Start Solis reader
+    if not args.no_solis:
+        reader = SolisModbusReader(
+            inverter_ip=gw_ip,
+            inverter_port=gw_port,
+            slave_id=solis_id,
+            poll_interval=solis_poll,
+        )
+        reader.start()
+
+    # Start Eastron reader
+    if not args.no_eastron:
+        eastron = EastronModbusReader(
+            gateway_ip=gw_ip,
+            gateway_port=gw_port,
+            slave_id=args.eastron_id,
+            poll_interval=args.eastron_poll,
+        )
+        eastron.start()
 
     log.info(f"Starting web server on {args.host}:{args.port}")
     try:
@@ -462,7 +535,10 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        reader.stop()
+        if reader:
+            reader.stop()
+        if eastron:
+            eastron.stop()
 
 
 if __name__ == "__main__":

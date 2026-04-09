@@ -15,6 +15,7 @@ import argparse
 import logging
 import math
 import random
+import struct
 import threading
 import time
 from datetime import datetime
@@ -162,27 +163,138 @@ def update_registers(context, slave_id=1):
         time.sleep(2)
 
 
+def float_to_regs(value):
+    """Convert a Python float to two Modbus registers (IEEE 754, big-endian)."""
+    raw = struct.pack(">f", value)
+    hi, lo = struct.unpack(">HH", raw)
+    return [hi, lo]
+
+
+def update_eastron_registers(context, slave_id=2):
+    """Periodically update the simulated Eastron SDM630MCT register values."""
+    t = 0
+    import_kwh = 1523.4
+    export_kwh = 876.2
+
+    while True:
+        store = context[slave_id].store["i"]
+
+        # Simulate 3-phase meter readings
+        base_v = 230 + random.uniform(-5, 5)
+        load_kw = 4 + random.uniform(-1, 2)  # ~4kW house load
+
+        for i, addr in enumerate([0x0000, 0x0002, 0x0004]):
+            v = base_v + random.uniform(-3, 3)
+            store.setValues(addr, float_to_regs(v))
+
+        for i, addr in enumerate([0x0006, 0x0008, 0x000A]):
+            c = load_kw * 1000 / 3 / base_v + random.uniform(-0.5, 0.5)
+            store.setValues(addr, float_to_regs(max(0, c)))
+
+        for i, addr in enumerate([0x000C, 0x000E, 0x0010]):
+            p = load_kw * 1000 / 3 + random.uniform(-100, 100)
+            store.setValues(addr, float_to_regs(p))
+
+        # VA, VAr per phase
+        for i, addr in enumerate([0x0012, 0x0014, 0x0016]):
+            store.setValues(addr, float_to_regs(load_kw * 1000 / 3 * 1.02))
+        for i, addr in enumerate([0x0018, 0x001A, 0x001C]):
+            store.setValues(addr, float_to_regs(random.uniform(-50, 50)))
+
+        # PF per phase
+        for addr in [0x001E, 0x0020, 0x0022]:
+            store.setValues(addr, float_to_regs(0.98 + random.uniform(-0.02, 0.01)))
+
+        # Averages/totals
+        store.setValues(0x002A, float_to_regs(base_v))
+        store.setValues(0x002E, float_to_regs(load_kw * 1000 / base_v / 3))
+        store.setValues(0x0030, float_to_regs(load_kw * 1000 / base_v))
+        store.setValues(0x0034, float_to_regs(load_kw * 1000))
+        store.setValues(0x0038, float_to_regs(load_kw * 1000 * 1.02))
+        store.setValues(0x003C, float_to_regs(random.uniform(-100, 100)))
+        store.setValues(0x003E, float_to_regs(0.98))
+
+        # Frequency
+        store.setValues(0x0046, float_to_regs(50.0 + random.uniform(-0.05, 0.05)))
+
+        # Energy counters
+        import_kwh += load_kw * 2 / 3600  # increment over 2s
+        export_kwh += random.uniform(0, 0.001)
+        store.setValues(0x0048, float_to_regs(import_kwh))
+        store.setValues(0x004A, float_to_regs(export_kwh))
+        store.setValues(0x004C, float_to_regs(12.3))
+        store.setValues(0x004E, float_to_regs(5.1))
+
+        # Line-to-line voltages
+        store.setValues(0x00C8, float_to_regs(base_v * 1.732))
+        store.setValues(0x00CA, float_to_regs(base_v * 1.732))
+        store.setValues(0x00CC, float_to_regs(base_v * 1.732))
+        store.setValues(0x00CE, float_to_regs(base_v * 1.732))
+
+        # Neutral current
+        store.setValues(0x00E0, float_to_regs(random.uniform(0.1, 1.5)))
+
+        # THD
+        for addr in [0x00EA, 0x00EC, 0x00EE]:
+            store.setValues(addr, float_to_regs(random.uniform(1, 4)))
+        for addr in [0x00F0, 0x00F2, 0x00F4]:
+            store.setValues(addr, float_to_regs(random.uniform(2, 8)))
+
+        # Demand
+        store.setValues(0x0100, float_to_regs(8.5))
+        store.setValues(0x0102, float_to_regs(8.3))
+        store.setValues(0x0104, float_to_regs(8.1))
+        store.setValues(0x0108, float_to_regs(load_kw * 1000 * 1.1))
+
+        # Total energy
+        store.setValues(0x0156, float_to_regs(import_kwh + export_kwh))
+        store.setValues(0x0158, float_to_regs(17.4))
+
+        t += 1
+        time.sleep(2)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Solis Inverter Modbus TCP Simulator")
+    parser = argparse.ArgumentParser(
+        description="Microgrid Modbus TCP Simulator (Solis + Eastron)"
+    )
     parser.add_argument("--port", type=int, default=5020, help="TCP port (default: 5020)")
     parser.add_argument("--host", default="0.0.0.0", help="Listen address (default: 0.0.0.0)")
     args = parser.parse_args()
 
-    ir_block = build_initial_store()
-
-    slave_ctx = ModbusDeviceContext(
+    # Solis inverter (slave ID 1): input registers 33000-33250
+    solis_ir = build_initial_store()
+    solis_ctx = ModbusDeviceContext(
         di=ModbusSequentialDataBlock(0, [0] * 10),
         co=ModbusSequentialDataBlock(0, [0] * 10),
         hr=ModbusSequentialDataBlock(0, [0] * 10),
-        ir=ir_block,
+        ir=solis_ir,
     )
-    server_ctx = ModbusServerContext(devices={1: slave_ctx}, single=False)
 
-    updater = threading.Thread(target=update_registers, args=(server_ctx, 1), daemon=True)
-    updater.start()
+    # Eastron meter (slave ID 2): input registers 0x0000-0x0200 (0-512)
+    eastron_ir = ModbusSequentialDataBlock(0, [0] * 600)
+    eastron_ctx = ModbusDeviceContext(
+        di=ModbusSequentialDataBlock(0, [0] * 10),
+        co=ModbusSequentialDataBlock(0, [0] * 10),
+        hr=ModbusSequentialDataBlock(0, [0] * 10),
+        ir=eastron_ir,
+    )
 
-    log.info(f"Starting Solis simulator on {args.host}:{args.port}")
-    log.info("Use: python app.py --inverter-ip 127.0.0.1 --inverter-port %d", args.port)
+    server_ctx = ModbusServerContext(
+        devices={1: solis_ctx, 2: eastron_ctx},
+        single=False,
+    )
+
+    # Start updater threads
+    t1 = threading.Thread(target=update_registers, args=(server_ctx, 1), daemon=True)
+    t2 = threading.Thread(target=update_eastron_registers, args=(server_ctx, 2), daemon=True)
+    t1.start()
+    t2.start()
+
+    log.info(f"Starting Microgrid simulator on {args.host}:{args.port}")
+    log.info("  Solis inverter: slave ID 1")
+    log.info("  Eastron meter:  slave ID 2")
+    log.info("Use: python app.py --gateway-ip 127.0.0.1 --gateway-port %d", args.port)
 
     StartTcpServer(context=server_ctx, address=(args.host, args.port))
 
