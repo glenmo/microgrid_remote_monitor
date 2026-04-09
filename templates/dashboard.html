@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solis 50kW Hybrid Inverter — Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-orange: #f97316;
+            --accent-red: #ef4444;
+            --accent-purple: #a855f7;
+            --accent-cyan: #06b6d4;
+            --border: #334155;
+            --gauge-track: #334155;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        .header h1 span { color: var(--accent-blue); }
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        .status-dot.ok { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); }
+        .status-dot.err { background: var(--accent-red); box-shadow: 0 0 6px var(--accent-red); }
+        .status-dot.warn { background: var(--accent-yellow); box-shadow: 0 0 6px var(--accent-yellow); }
+
+        /* Main layout */
+        .dashboard {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Top row: SoC gauge + key metrics */
+        .top-row {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+        }
+
+        /* Card base */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .card-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        /* SoC gauge */
+        .soc-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .soc-gauge {
+            position: relative;
+            width: 220px;
+            height: 220px;
+        }
+        .soc-gauge canvas { width: 100%; height: 100%; }
+        .soc-gauge .soc-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        .soc-gauge .soc-value {
+            font-size: 3rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .soc-gauge .soc-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        .soc-detail {
+            margin-top: 12px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+        .soc-detail span { color: var(--text-primary); font-weight: 500; }
+
+        /* Key metrics grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+        .metric {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+        }
+        .metric-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+        }
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .metric-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+        .metric-unit {
+            font-size: 0.85rem;
+            font-weight: 400;
+            color: var(--text-secondary);
+            margin-left: 4px;
+        }
+        .metric-sub {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        /* Icon backgrounds */
+        .icon-solar { background: rgba(234, 179, 8, 0.15); color: var(--accent-yellow); }
+        .icon-grid { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
+        .icon-battery { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); }
+        .icon-temp { background: rgba(249, 115, 22, 0.15); color: var(--accent-orange); }
+        .icon-power { background: rgba(168, 85, 247, 0.15); color: var(--accent-purple); }
+        .icon-freq { background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); }
+
+        /* Charts */
+        .charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+
+        /* PV strings table */
+        .pv-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .pv-table th, .pv-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .pv-table th {
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+        .pv-table td { color: var(--text-primary); }
+
+        /* Grid detail row */
+        .detail-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+
+        /* Status bar */
+        .status-bar {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .status-item {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .status-item strong { color: var(--text-primary); }
+
+        /* Battery direction indicator */
+        .batt-charging { color: var(--accent-green); }
+        .batt-discharging { color: var(--accent-orange); }
+        .batt-idle { color: var(--text-muted); }
+
+        /* Fault badge */
+        .fault-badge {
+            display: inline-block;
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        .ok-badge {
+            display: inline-block;
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--accent-green);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .top-row { grid-template-columns: 1fr; }
+            .charts-row { grid-template-columns: 1fr; }
+            .detail-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+    <h1><span>&#9883;</span> Solis 50kW Hybrid Inverter</h1>
+    <div class="header-status">
+        <span id="conn-status"><span class="status-dot warn"></span>Connecting...</span>
+        <span id="last-update">--</span>
+    </div>
+</div>
+
+<!-- Dashboard -->
+<div class="dashboard">
+
+    <!-- Top row: SoC + key metrics -->
+    <div class="top-row">
+        <!-- Battery SoC Gauge -->
+        <div class="card soc-card">
+            <div class="card-title">Battery State of Charge</div>
+            <div class="soc-gauge">
+                <canvas id="socGauge" width="220" height="220"></canvas>
+                <div class="soc-text">
+                    <div class="soc-value" id="socValue">--</div>
+                    <div class="soc-label" id="socLabel">%</div>
+                </div>
+            </div>
+            <div class="soc-detail">
+                <div>SOH: <span id="battSoh">--</span>% &nbsp;|&nbsp;
+                     Status: <span id="battDirection" class="batt-idle">--</span></div>
+                <div style="margin-top:4px;">BMS: <span id="bmsStatus">--</span></div>
+            </div>
+        </div>
+
+        <!-- Key metrics -->
+        <div class="metrics-grid">
+            <div class="metric">
+                <div class="metric-icon icon-solar">&#9728;</div>
+                <div class="metric-label">PV Power</div>
+                <div class="metric-value" id="pvPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">Today: <span id="pvToday">--</span> kWh</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-grid">&#9889;</div>
+                <div class="metric-label">Grid Power</div>
+                <div class="metric-value" id="gridPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub" id="gridDirection">--</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-battery">&#128267;</div>
+                <div class="metric-label">Battery Power</div>
+                <div class="metric-value" id="battPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub"><span id="battVoltage">--</span>V &nbsp;/&nbsp; <span id="battCurrent">--</span>A</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-freq">&#8776;</div>
+                <div class="metric-label">Grid Frequency</div>
+                <div class="metric-value" id="gridFreq">--<span class="metric-unit">Hz</span></div>
+                <div class="metric-sub" id="gridVoltage">--</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-temp">&#127777;</div>
+                <div class="metric-label">Inverter Temp</div>
+                <div class="metric-value" id="invTemp">--<span class="metric-unit">&deg;C</span></div>
+                <div class="metric-sub">Battery MOS: <span id="battTemp">--</span>&deg;C</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-power">&#9881;</div>
+                <div class="metric-label">Status</div>
+                <div class="metric-value" style="font-size:1rem;" id="opStatus">--</div>
+                <div class="metric-sub">Faults: <span id="faultStatus">--</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-row">
+        <div class="card">
+            <div class="card-title">Battery SoC History</div>
+            <div class="chart-container"><canvas id="chartSoc"></canvas></div>
+        </div>
+        <div class="card">
+            <div class="card-title">Power Flow History</div>
+            <div class="chart-container"><canvas id="chartPower"></canvas></div>
+        </div>
+    </div>
+
+    <!-- PV Strings & Grid detail -->
+    <div class="detail-row">
+        <div class="card">
+            <div class="card-title">PV String Details</div>
+            <table class="pv-table">
+                <thead><tr><th>String</th><th>Voltage</th><th>Current</th><th>Power</th></tr></thead>
+                <tbody id="pvTable">
+                    <tr><td>PV1</td><td id="pv1v">--</td><td id="pv1i">--</td><td id="pv1p">--</td></tr>
+                    <tr><td>PV2</td><td id="pv2v">--</td><td id="pv2i">--</td><td id="pv2p">--</td></tr>
+                    <tr><td>PV3</td><td id="pv3v">--</td><td id="pv3i">--</td><td id="pv3p">--</td></tr>
+                    <tr><td>PV4</td><td id="pv4v">--</td><td id="pv4i">--</td><td id="pv4p">--</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="card-title">AC Grid Phases</div>
+            <table class="pv-table">
+                <thead><tr><th>Phase</th><th>Voltage</th><th>Current</th></tr></thead>
+                <tbody>
+                    <tr><td>A-B</td><td id="vab">--</td><td id="ia">--</td></tr>
+                    <tr><td>B-C</td><td id="vbc">--</td><td id="ib">--</td></tr>
+                    <tr><td>C-A</td><td id="vca">--</td><td id="ic">--</td></tr>
+                </tbody>
+            </table>
+            <div style="margin-top:12px;">
+                <div class="status-bar">
+                    <div class="status-item">Active: <strong id="activePwr">--</strong> W</div>
+                    <div class="status-item">Reactive: <strong id="reactivePwr">--</strong> Var</div>
+                    <div class="status-item">Apparent: <strong id="apparentPwr">--</strong> VA</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Battery BMS Detail</div>
+            <table class="pv-table">
+                <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+                <tbody>
+                    <tr><td>BMS Voltage</td><td id="bmsVolt">--</td></tr>
+                    <tr><td>BMS Current</td><td id="bmsCurr">--</td></tr>
+                    <tr><td>Charge Limit</td><td id="bmsChgLim">--</td></tr>
+                    <tr><td>Discharge Limit</td><td id="bmsDischLim">--</td></tr>
+                    <tr><td>DC Bus Voltage</td><td id="dcBusV">--</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Bottom: energy + status -->
+    <div class="card">
+        <div class="card-title">System Information</div>
+        <div class="status-bar" id="sysInfo">
+            <div class="status-item">Total PV: <strong id="pvTotal">--</strong> kWh</div>
+            <div class="status-item">Working Mode: <strong id="workMode">--</strong></div>
+            <div class="status-item">Inverter Time: <strong id="invTime">--</strong></div>
+            <div class="status-item">Backup: <strong id="backupInfo">--</strong></div>
+            <div class="status-item">Poll Errors: <strong id="pollErrors">--</strong></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// =========================================================================
+// SoC Gauge drawing
+// =========================================================================
+const socCanvas = document.getElementById('socGauge');
+const socCtx = socCanvas.getContext('2d');
+
+function getSocColor(soc) {
+    if (soc >= 70) return '#22c55e';      // green
+    if (soc >= 40) return '#eab308';      // yellow
+    if (soc >= 20) return '#f97316';      // orange
+    return '#ef4444';                      // red
+}
+
+function drawSocGauge(soc) {
+    const w = socCanvas.width, h = socCanvas.height;
+    const cx = w / 2, cy = h / 2;
+    const r = 90, lw = 14;
+
+    socCtx.clearRect(0, 0, w, h);
+
+    // Track
+    socCtx.beginPath();
+    socCtx.arc(cx, cy, r, 0.75 * Math.PI, 2.25 * Math.PI);
+    socCtx.strokeStyle = '#334155';
+    socCtx.lineWidth = lw;
+    socCtx.lineCap = 'round';
+    socCtx.stroke();
+
+    // Value arc
+    const angle = 0.75 * Math.PI + (soc / 100) * 1.5 * Math.PI;
+    const color = getSocColor(soc);
+    socCtx.beginPath();
+    socCtx.arc(cx, cy, r, 0.75 * Math.PI, angle);
+    socCtx.strokeStyle = color;
+    socCtx.lineWidth = lw;
+    socCtx.lineCap = 'round';
+    socCtx.stroke();
+
+    // Update text
+    document.getElementById('socValue').style.color = color;
+    document.getElementById('socValue').textContent = Math.round(soc);
+}
+
+drawSocGauge(0);
+
+// =========================================================================
+// Charts
+// =========================================================================
+const chartOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 300 },
+    scales: {
+        x: { ticks: { color: '#64748b', maxTicksLimit: 12 }, grid: { color: '#1e293b' } },
+        y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }
+    },
+    plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12 } } }
+};
+
+const socChart = new Chart(document.getElementById('chartSoc'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: 'SoC %',
+            data: [],
+            borderColor: '#22c55e',
+            backgroundColor: 'rgba(34,197,94,0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+        }]
+    },
+    options: { ...chartOpts, scales: { ...chartOpts.scales, y: { ...chartOpts.scales.y, min: 0, max: 100 } } }
+});
+
+const powerChart = new Chart(document.getElementById('chartPower'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            {
+                label: 'PV Power (W)',
+                data: [],
+                borderColor: '#eab308',
+                backgroundColor: 'rgba(234,179,8,0.1)',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+            },
+            {
+                label: 'Grid Power (W)',
+                data: [],
+                borderColor: '#3b82f6',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+            },
+            {
+                label: 'Battery Power (W)',
+                data: [],
+                borderColor: '#22c55e',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+            }
+        ]
+    },
+    options: chartOpts
+});
+
+// =========================================================================
+// Data fetching
+// =========================================================================
+const POLL_MS = 5000;
+let lastData = {};
+
+function fmt(val, decimals = 1) {
+    if (val === undefined || val === null) return '--';
+    return Number(val).toFixed(decimals);
+}
+
+async function fetchData() {
+    try {
+        const res = await fetch('/api/data');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const d = await res.json();
+        lastData = d;
+        updateDashboard(d);
+        updateConnectionStatus(true);
+    } catch (e) {
+        console.error('Fetch error:', e);
+        updateConnectionStatus(false);
+    }
+}
+
+async function fetchHistory() {
+    try {
+        const res = await fetch('/api/history');
+        if (!res.ok) return;
+        const h = await res.json();
+        updateCharts(h);
+    } catch (e) {
+        console.error('History fetch error:', e);
+    }
+}
+
+async function fetchStatus() {
+    try {
+        const res = await fetch('/api/status');
+        if (!res.ok) return;
+        const s = await res.json();
+        document.getElementById('pollErrors').textContent = s.read_errors + ' / ' + s.total_reads;
+    } catch (e) { /* ignore */ }
+}
+
+function updateConnectionStatus(ok) {
+    const el = document.getElementById('conn-status');
+    if (ok && lastData._read_ok) {
+        el.innerHTML = '<span class="status-dot ok"></span>Connected';
+    } else if (ok) {
+        el.innerHTML = '<span class="status-dot warn"></span>Partial read';
+    } else {
+        el.innerHTML = '<span class="status-dot err"></span>Disconnected';
+    }
+    if (lastData._timestamp) {
+        document.getElementById('last-update').textContent = 'Updated: ' + lastData._timestamp.substring(11, 19);
+    }
+}
+
+function updateDashboard(d) {
+    // SoC gauge
+    const soc = d.battery_soc ?? 0;
+    drawSocGauge(soc);
+    document.getElementById('battSoh').textContent = fmt(d.battery_soh, 0);
+
+    // Battery direction
+    const dirEl = document.getElementById('battDirection');
+    const dir = d.battery_current_dir;
+    if (dir === 0) { dirEl.textContent = 'Charging'; dirEl.className = 'batt-charging'; }
+    else if (dir === 1) { dirEl.textContent = 'Discharging'; dirEl.className = 'batt-discharging'; }
+    else { dirEl.textContent = 'Idle'; dirEl.className = 'batt-idle'; }
+
+    document.getElementById('bmsStatus').textContent = d.bms_status_str ?? '--';
+
+    // PV Power
+    document.getElementById('pvPower').innerHTML = fmt(d.pv_total_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('pvToday').textContent = fmt(d.pv_today_energy, 1);
+
+    // Grid Power
+    const activePwr = d.active_power ?? 0;
+    document.getElementById('gridPower').innerHTML = fmt(Math.abs(activePwr), 0) + '<span class="metric-unit">W</span>';
+    const gridDirEl = document.getElementById('gridDirection');
+    if (activePwr > 50) { gridDirEl.textContent = 'Exporting to grid'; gridDirEl.style.color = '#22c55e'; }
+    else if (activePwr < -50) { gridDirEl.textContent = 'Importing from grid'; gridDirEl.style.color = '#f97316'; }
+    else { gridDirEl.textContent = 'Balanced'; gridDirEl.style.color = '#94a3b8'; }
+
+    // Battery Power
+    const battPwr = d.battery_power ?? 0;
+    document.getElementById('battPower').innerHTML = fmt(Math.abs(battPwr), 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('battVoltage').textContent = fmt(d.battery_voltage, 1);
+    document.getElementById('battCurrent').textContent = fmt(d.battery_current, 1);
+
+    // Grid frequency
+    document.getElementById('gridFreq').innerHTML = fmt(d.grid_frequency, 2) + '<span class="metric-unit">Hz</span>';
+    document.getElementById('gridVoltage').textContent = 'V(AB): ' + fmt(d.grid_voltage_ab, 1) + ' V';
+
+    // Temperature
+    document.getElementById('invTemp').innerHTML = fmt(d.inverter_temp, 1) + '<span class="metric-unit">&deg;C</span>';
+    document.getElementById('battTemp').textContent = fmt(d.battery_mos_temp, 1);
+
+    // Status
+    document.getElementById('opStatus').textContent = d.working_mode_str ?? '--';
+    const faults = [d.fault_code_01, d.fault_code_02, d.fault_code_03, d.fault_code_04].filter(f => f && f !== 0);
+    const faultEl = document.getElementById('faultStatus');
+    if (faults.length > 0) {
+        faultEl.innerHTML = '<span class="fault-badge">FAULT: ' + faults.join(', ') + '</span>';
+    } else {
+        faultEl.innerHTML = '<span class="ok-badge">None</span>';
+    }
+
+    // PV Strings
+    for (let i = 1; i <= 4; i++) {
+        const v = d['pv' + i + '_voltage'] ?? 0;
+        const c = d['pv' + i + '_current'] ?? 0;
+        document.getElementById('pv' + i + 'v').textContent = fmt(v, 1) + ' V';
+        document.getElementById('pv' + i + 'i').textContent = fmt(c, 1) + ' A';
+        document.getElementById('pv' + i + 'p').textContent = fmt(v * c, 0) + ' W';
+    }
+
+    // AC Grid Phases
+    document.getElementById('vab').textContent = fmt(d.grid_voltage_ab, 1) + ' V';
+    document.getElementById('vbc').textContent = fmt(d.grid_voltage_bc, 1) + ' V';
+    document.getElementById('vca').textContent = fmt(d.grid_voltage_ca, 1) + ' V';
+    document.getElementById('ia').textContent = fmt(d.grid_current_a, 1) + ' A';
+    document.getElementById('ib').textContent = fmt(d.grid_current_b, 1) + ' A';
+    document.getElementById('ic').textContent = fmt(d.grid_current_c, 1) + ' A';
+    document.getElementById('activePwr').textContent = fmt(d.active_power, 0);
+    document.getElementById('reactivePwr').textContent = fmt(d.reactive_power, 0);
+    document.getElementById('apparentPwr').textContent = fmt(d.apparent_power, 0);
+
+    // BMS detail
+    document.getElementById('bmsVolt').textContent = fmt(d.bms_battery_voltage, 2) + ' V';
+    document.getElementById('bmsCurr').textContent = fmt(d.bms_battery_current, 1) + ' A';
+    document.getElementById('bmsChgLim').textContent = fmt(d.bms_charge_limit, 1) + ' A';
+    document.getElementById('bmsDischLim').textContent = fmt(d.bms_discharge_limit, 1) + ' A';
+    document.getElementById('dcBusV').textContent = fmt(d.dc_bus_voltage, 1) + ' V';
+
+    // System info
+    document.getElementById('pvTotal').textContent = fmt(d.pv_total_energy, 0);
+    document.getElementById('workMode').textContent = d.working_mode_str ?? '--';
+    if (d.year) {
+        document.getElementById('invTime').textContent =
+            `20${fmt(d.year,0)}-${String(d.month|0).padStart(2,'0')}-${String(d.day|0).padStart(2,'0')} ` +
+            `${String(d.hour|0).padStart(2,'0')}:${String(d.minute|0).padStart(2,'0')}`;
+    }
+    document.getElementById('backupInfo').textContent =
+        fmt(d.backup_voltage, 1) + ' V / ' + fmt(d.backup_current, 1) + ' A';
+}
+
+function updateCharts(h) {
+    socChart.data.labels = h.timestamps;
+    socChart.data.datasets[0].data = h.battery_soc;
+    socChart.update('none');
+
+    powerChart.data.labels = h.timestamps;
+    powerChart.data.datasets[0].data = h.pv_total_power;
+    powerChart.data.datasets[1].data = h.active_power;
+    powerChart.data.datasets[2].data = h.battery_power;
+    powerChart.update('none');
+}
+
+// =========================================================================
+// Polling loops
+// =========================================================================
+fetchData();
+fetchHistory();
+fetchStatus();
+
+setInterval(fetchData, POLL_MS);
+setInterval(fetchHistory, 60000);   // history once per minute
+setInterval(fetchStatus, 30000);    // status every 30s
+</script>
+</body>
+</html>
