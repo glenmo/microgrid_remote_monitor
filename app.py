@@ -29,6 +29,7 @@ from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ModbusIOException
 
 from eastron_reader import EastronModbusReader
+from sppro_reader import SPProModbusReader
 
 # NOTE: pymodbus v3.6+ uses 'device_id' parameter.
 # If using an older version (v3.0-3.5), change 'device_id' to 'slave' in
@@ -416,6 +417,7 @@ class SolisModbusReader:
 # ---------------------------------------------------------------------------
 reader: SolisModbusReader = None
 eastron: EastronModbusReader = None
+sppro: SPProModbusReader = None
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +481,33 @@ def api_eastron_status():
 
 
 # ---------------------------------------------------------------------------
+# SP Pro API routes
+# ---------------------------------------------------------------------------
+@app.route("/api/sppro/data")
+def api_sppro_data():
+    """Return current SP Pro inverter data as JSON."""
+    if sppro is None:
+        return jsonify({"error": "SP Pro reader not initialised"}), 503
+    return jsonify(sppro.get_data())
+
+
+@app.route("/api/sppro/history")
+def api_sppro_history():
+    """Return SP Pro historical data for charts."""
+    if sppro is None:
+        return jsonify({"error": "SP Pro reader not initialised"}), 503
+    return jsonify(sppro.get_history())
+
+
+@app.route("/api/sppro/status")
+def api_sppro_status():
+    """Return SP Pro connection/polling status."""
+    if sppro is None:
+        return jsonify({"error": "SP Pro reader not initialised"}), 503
+    return jsonify(sppro.get_status())
+
+
+# ---------------------------------------------------------------------------
 # Editable message (read from message.txt in the app directory)
 # ---------------------------------------------------------------------------
 MESSAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "message.txt")
@@ -500,7 +529,7 @@ def api_message():
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
-    global reader, eastron
+    global reader, eastron, sppro
 
     parser = argparse.ArgumentParser(
         description="Microgrid Remote Monitor — Solis Inverter + Eastron Energy Meter"
@@ -535,6 +564,16 @@ def main():
                         help="Eastron poll interval in seconds (default: 5)")
     parser.add_argument("--no-eastron", action="store_true",
                         help="Disable the Eastron meter reader")
+
+    # SP Pro inverter — Modbus TCP
+    parser.add_argument("--sppro-ip", default="192.168.11.240",
+                        help="SP Pro Modbus TCP IP address (default: 192.168.11.240)")
+    parser.add_argument("--sppro-port", type=int, default=502,
+                        help="SP Pro Modbus TCP port (default: 502)")
+    parser.add_argument("--sppro-poll", type=int, default=5,
+                        help="SP Pro poll interval in seconds (default: 5)")
+    parser.add_argument("--no-sppro", action="store_true",
+                        help="Disable the SP Pro inverter reader")
 
     parser.add_argument("--debug", action="store_true",
                         help="Enable Flask debug mode")
@@ -603,6 +642,15 @@ def main():
         )
         eastron.start()
 
+    # Start SP Pro reader
+    if not args.no_sppro:
+        sppro = SPProModbusReader(
+            ip=args.sppro_ip,
+            port=args.sppro_port,
+            poll_interval=args.sppro_poll,
+        )
+        sppro.start()
+
     log.info(f"Starting web server on {args.host}:{args.port}")
     try:
         app.run(host=args.host, port=args.port, debug=args.debug, use_reloader=False)
@@ -613,6 +661,8 @@ def main():
             reader.stop()
         if eastron:
             eastron.stop()
+        if sppro:
+            sppro.stop()
         if shared_client:
             shared_client.close()
             log.info("Shared Modbus connection closed")

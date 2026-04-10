@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Microgrid Remote Monitor — Solis + Eastron</title>
+    <title>Microgrid Remote Monitor — Solis + Eastron + SP Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
         :root {
@@ -329,6 +329,7 @@
     <div class="header-status">
         <span id="conn-status"><span class="status-dot warn"></span>Connecting...</span>
         <span id="eastron-conn" style="margin-left:8px;"><span class="status-dot warn"></span>Meter...</span>
+        <span id="sppro-conn" style="margin-left:8px;"><span class="status-dot warn"></span>SP Pro...</span>
         <span id="last-update">--</span>
     </div>
 </div>
@@ -535,6 +536,93 @@
         <div class="card">
             <div class="card-title">Meter — Power History</div>
             <div class="chart-container"><canvas id="chartMeterPower"></canvas></div>
+        </div>
+    </div>
+
+    <!-- === SP PRO INVERTER SECTION === -->
+    <div class="section-divider" style="margin-top:12px;">
+        <span class="device-tag" style="background:rgba(168,85,247,0.15);color:var(--accent-purple);border-color:var(--accent-purple);">Selectronic SP Pro</span>
+        <hr>
+    </div>
+
+    <!-- SP Pro SoC + key metrics -->
+    <div class="top-row">
+        <!-- SP Pro Battery SoC Gauge -->
+        <div class="card soc-card">
+            <div class="card-title">SP Pro Battery SoC</div>
+            <div class="soc-gauge">
+                <canvas id="spSocGauge" width="220" height="220"></canvas>
+                <div class="soc-text">
+                    <div class="soc-value" id="spSocValue">--</div>
+                    <div class="soc-label">%</div>
+                </div>
+            </div>
+            <div class="soc-detail">
+                <div>Battery: <span id="spBattVolt">--</span>V &nbsp;|&nbsp; <span id="spBattCurr">--</span>A</div>
+                <div style="margin-top:4px;">Power: <span id="spBattPower">--</span> W</div>
+            </div>
+        </div>
+
+        <!-- SP Pro key metrics -->
+        <div class="metrics-grid">
+            <div class="metric">
+                <div class="metric-icon icon-solar">&#9728;</div>
+                <div class="metric-label">Total PV Power</div>
+                <div class="metric-value" id="spPvPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">All 3 phases combined</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-grid">&#9889;</div>
+                <div class="metric-label">Source Power</div>
+                <div class="metric-value" id="spSourcePower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">Grid / Generator</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon" style="background:rgba(249,115,22,0.15);color:var(--accent-orange);">&#8594;</div>
+                <div class="metric-label">Load Power</div>
+                <div class="metric-value" id="spLoadPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">Total consumption</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon" style="background:rgba(168,85,247,0.15);color:var(--accent-purple);">&#9881;</div>
+                <div class="metric-label">Inverter Power</div>
+                <div class="metric-value" id="spInvPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">AC output total</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-freq">&#8776;</div>
+                <div class="metric-label">Frequency</div>
+                <div class="metric-value" id="spFreq">--<span class="metric-unit">Hz</span></div>
+                <div class="metric-sub">Inverter output</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-battery">&#128267;</div>
+                <div class="metric-label">Battery Current</div>
+                <div class="metric-value" id="spTotalBattCurr">--<span class="metric-unit">A</span></div>
+                <div class="metric-sub">All inverters</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SP Pro phase details + charts -->
+    <div class="charts-row">
+        <div class="card">
+            <div class="card-title">SP Pro — Phase Details</div>
+            <table class="pv-table">
+                <thead><tr><th>Phase</th><th>PV (W)</th><th>Source (W)</th><th>Load (W)</th><th>Inverter (W)</th><th>Batt (A)</th><th>Load V</th><th>Gen V</th></tr></thead>
+                <tbody>
+                    <tr><td>L1</td><td id="spL1pv">--</td><td id="spL1src">--</td><td id="spL1load">--</td><td id="spL1inv">--</td><td id="spL1batt">--</td><td id="spL1lv">--</td><td id="spL1gv">--</td></tr>
+                    <tr><td>L2</td><td id="spL2pv">--</td><td id="spL2src">--</td><td id="spL2load">--</td><td id="spL2inv">--</td><td id="spL2batt">--</td><td id="spL2lv">--</td><td id="spL2gv">--</td></tr>
+                    <tr><td>L3</td><td id="spL3pv">--</td><td id="spL3src">--</td><td id="spL3load">--</td><td id="spL3inv">--</td><td id="spL3batt">--</td><td id="spL3lv">--</td><td id="spL3gv">--</td></tr>
+                    <tr style="font-weight:bold;border-top:2px solid var(--border);">
+                        <td>Total</td><td id="spTotPv">--</td><td id="spTotSrc">--</td><td id="spTotLoad">--</td><td id="spTotInv">--</td><td id="spTotBatt">--</td><td>—</td><td>—</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="card">
+            <div class="card-title">SP Pro — Power History</div>
+            <div class="chart-container"><canvas id="chartSpPower"></canvas></div>
         </div>
     </div>
 
@@ -953,6 +1041,188 @@ function updateEastronCharts(h) {
 }
 
 // =========================================================================
+// SP Pro SoC Gauge
+// =========================================================================
+const spSocCanvas = document.getElementById('spSocGauge');
+const spSocCtx = spSocCanvas.getContext('2d');
+
+function drawSpSocGauge(soc) {
+    const w = spSocCanvas.width, h = spSocCanvas.height;
+    const cx = w / 2, cy = h / 2;
+    const r = 90, lw = 14;
+
+    spSocCtx.clearRect(0, 0, w, h);
+
+    // Track
+    spSocCtx.beginPath();
+    spSocCtx.arc(cx, cy, r, 0.75 * Math.PI, 2.25 * Math.PI);
+    spSocCtx.strokeStyle = '#334155';
+    spSocCtx.lineWidth = lw;
+    spSocCtx.lineCap = 'round';
+    spSocCtx.stroke();
+
+    // Value arc
+    const angle = 0.75 * Math.PI + (soc / 100) * 1.5 * Math.PI;
+    const color = getSocColor(soc);
+    spSocCtx.beginPath();
+    spSocCtx.arc(cx, cy, r, 0.75 * Math.PI, angle);
+    spSocCtx.strokeStyle = color;
+    spSocCtx.lineWidth = lw;
+    spSocCtx.lineCap = 'round';
+    spSocCtx.stroke();
+
+    document.getElementById('spSocValue').style.color = color;
+    document.getElementById('spSocValue').textContent = Math.round(soc);
+}
+
+drawSpSocGauge(0);
+
+// =========================================================================
+// SP Pro Power Chart
+// =========================================================================
+const spPowerChart = new Chart(document.getElementById('chartSpPower'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            {
+                label: 'PV Power (W)',
+                data: [],
+                borderColor: '#eab308',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+            },
+            {
+                label: 'Load Power (W)',
+                data: [],
+                borderColor: '#f97316',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+            },
+            {
+                label: 'Source Power (W)',
+                data: [],
+                borderColor: '#3b82f6',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+            },
+            {
+                label: 'SoC (%)',
+                data: [],
+                borderColor: '#22c55e',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+                yAxisID: 'y1',
+            }
+        ]
+    },
+    options: {
+        ...chartOpts,
+        scales: {
+            ...chartOpts.scales,
+            y1: {
+                position: 'right',
+                min: 0,
+                max: 100,
+                ticks: { color: '#64748b' },
+                grid: { display: false },
+            }
+        }
+    }
+});
+
+// =========================================================================
+// SP Pro data fetching
+// =========================================================================
+let lastSpProData = {};
+
+async function fetchSpProData() {
+    try {
+        const res = await fetch('/api/sppro/data');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const d = await res.json();
+        lastSpProData = d;
+        updateSpProDashboard(d);
+        updateSpProStatus(true);
+    } catch (e) {
+        console.error('SP Pro fetch error:', e);
+        updateSpProStatus(false);
+    }
+}
+
+async function fetchSpProHistory() {
+    try {
+        const res = await fetch('/api/sppro/history');
+        if (!res.ok) return;
+        const h = await res.json();
+        updateSpProCharts(h);
+    } catch (e) { /* ignore */ }
+}
+
+function updateSpProStatus(ok) {
+    const el = document.getElementById('sppro-conn');
+    if (ok && lastSpProData._read_ok) {
+        el.innerHTML = '<span class="status-dot ok"></span>SP Pro';
+    } else if (ok) {
+        el.innerHTML = '<span class="status-dot warn"></span>SP Pro';
+    } else {
+        el.innerHTML = '<span class="status-dot err"></span>SP Pro';
+    }
+}
+
+function updateSpProDashboard(d) {
+    // SoC gauge
+    const soc = d.battery_soc ?? 0;
+    drawSpSocGauge(soc);
+
+    // Battery info
+    document.getElementById('spBattVolt').textContent = fmt(d.battery_voltage, 1);
+    document.getElementById('spBattCurr').textContent = fmt(d.total_battery_current, 1);
+    document.getElementById('spBattPower').textContent = fmt(d.battery_power, 0);
+
+    // Key metrics
+    document.getElementById('spPvPower').innerHTML = fmt(d.total_pv_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('spSourcePower').innerHTML = fmt(d.total_source_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('spLoadPower').innerHTML = fmt(d.total_load_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('spInvPower').innerHTML = fmt(d.total_inverter_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('spFreq').innerHTML = fmt(d.inverter_frequency, 1) + '<span class="metric-unit">Hz</span>';
+    document.getElementById('spTotalBattCurr').innerHTML = fmt(d.total_battery_current, 1) + '<span class="metric-unit">A</span>';
+
+    // Phase details table
+    const phases = ['l1', 'l2', 'l3'];
+    for (const p of phases) {
+        const P = p.toUpperCase().replace('L', 'L');
+        document.getElementById('sp' + P + 'pv').textContent = fmt(d[p + '_pv_power'], 0);
+        document.getElementById('sp' + P + 'src').textContent = fmt(d[p + '_source_power'], 0);
+        document.getElementById('sp' + P + 'load').textContent = fmt(d[p + '_load_power'], 0);
+        document.getElementById('sp' + P + 'inv').textContent = fmt(d[p + '_inverter_power'], 0);
+        document.getElementById('sp' + P + 'batt').textContent = fmt(d[p + '_battery_current'], 1);
+        document.getElementById('sp' + P + 'lv').textContent = fmt(d[p + '_load_voltage'], 1) + ' V';
+        document.getElementById('sp' + P + 'gv').textContent = fmt(d[p + '_gen_voltage'], 1) + ' V';
+    }
+
+    // Totals row
+    document.getElementById('spTotPv').textContent = fmt(d.total_pv_power, 0);
+    document.getElementById('spTotSrc').textContent = fmt(d.total_source_power, 0);
+    document.getElementById('spTotLoad').textContent = fmt(d.total_load_power, 0);
+    document.getElementById('spTotInv').textContent = fmt(d.total_inverter_power, 0);
+    document.getElementById('spTotBatt').textContent = fmt(d.total_battery_current, 1);
+}
+
+function updateSpProCharts(h) {
+    spPowerChart.data.labels = h.timestamps;
+    spPowerChart.data.datasets[0].data = h.total_pv_power;
+    spPowerChart.data.datasets[1].data = h.total_load_power;
+    spPowerChart.data.datasets[2].data = h.total_source_power;
+    spPowerChart.data.datasets[3].data = h.battery_soc;
+    spPowerChart.update('none');
+}
+
+// =========================================================================
 // Message box
 // =========================================================================
 async function fetchMessage() {
@@ -971,6 +1241,8 @@ fetchHistory();
 fetchStatus();
 fetchEastronData();
 fetchEastronHistory();
+fetchSpProData();
+fetchSpProHistory();
 fetchMessage();
 
 setInterval(fetchData, POLL_MS);
@@ -978,6 +1250,8 @@ setInterval(fetchHistory, 60000);
 setInterval(fetchStatus, 30000);
 setInterval(fetchEastronData, POLL_MS);
 setInterval(fetchEastronHistory, 60000);
+setInterval(fetchSpProData, POLL_MS);
+setInterval(fetchSpProHistory, 60000);
 setInterval(fetchMessage, 300000);
 </script>
 </body>
