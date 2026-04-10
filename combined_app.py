@@ -4,12 +4,15 @@ Microgrid Combined Dashboard — Solis + SP Pro (SwitchDin)
 =========================================================
 Serves a single dashboard on port 5003 showing both systems side by side.
 
-  - Solis 50kW Hybrid Inverter  — direct Modbus TCP (192.168.11.214:502)
+  - Solis 50kW Hybrid Inverter  — proxied from the existing app on port 5000
   - Selectronic SP Pro           — via SwitchDin Stormcloud cloud API
+
+The Solis inverter only accepts one Modbus TCP connection at a time, so
+rather than competing with the app on port 5000 we proxy its JSON API.
 
 Usage:
     python combined_app.py \
-        --solis-ip 192.168.11.214 --solis-port 502 --solis-id 1 \
+        --solis-url http://localhost:5000 \
         --switchdin-user user@example.com --switchdin-pass SECRET \
         --port 5003
 """
@@ -17,14 +20,10 @@ Usage:
 import argparse
 import logging
 import os
-import threading
-import time
-from datetime import datetime
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, Response
+import requests as http_requests
 
-# Import readers from existing modules
-from app import SolisModbusReader
 from switchdin_reader import SwitchDinReader
 
 # ---------------------------------------------------------------------------
@@ -42,10 +41,10 @@ log = logging.getLogger("combined_monitor")
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 # ---------------------------------------------------------------------------
-# Global reader instances
+# Global state
 # ---------------------------------------------------------------------------
-solis: SolisModbusReader = None
 switchdin: SwitchDinReader = None
+solis_base_url: str = "http://localhost:5000"
 
 
 # ---------------------------------------------------------------------------
@@ -57,26 +56,30 @@ def index():
     return render_template("combined_dashboard.html")
 
 
-# ---- Solis API endpoints ----
+# ---- Solis API endpoints (proxy from port 5000) ----
+def _proxy_solis(path):
+    """Forward a request to the Solis app and relay the JSON response."""
+    try:
+        resp = http_requests.get(f"{solis_base_url}{path}", timeout=5)
+        return Response(resp.content, status=resp.status_code,
+                        content_type=resp.headers.get("Content-Type", "application/json"))
+    except Exception as e:
+        return jsonify({"error": f"Solis proxy error: {e}"}), 502
+
+
 @app.route("/api/solis/data")
 def api_solis_data():
-    if solis is None:
-        return jsonify({"error": "Solis reader not initialised"}), 503
-    return jsonify(solis.get_data())
+    return _proxy_solis("/api/data")
 
 
 @app.route("/api/solis/history")
 def api_solis_history():
-    if solis is None:
-        return jsonify({"error": "Solis reader not initialised"}), 503
-    return jsonify(solis.get_history())
+    return _proxy_solis("/api/history")
 
 
 @app.route("/api/solis/status")
 def api_solis_status():
-    if solis is None:
-        return jsonify({"error": "Solis reader not initialised"}), 503
-    return jsonify(solis.get_status())
+    return _proxy_solis("/api/status")
 
 
 # ---- SP Pro (SwitchDin) API endpoints ----
@@ -105,7 +108,7 @@ def api_sppro_status():
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
-    global solis, switchdin
+    global switchdin, solis_base_url
 
     parser = argparse.ArgumentParser(
         description="Combined Microgrid Dashboard — Solis + SP Pro (SwitchDin)"
@@ -117,17 +120,9 @@ def main():
     parser.add_argument("--port", type=int, default=5003,
                         help="Flask listen port (default: 5003)")
 
-    # Solis inverter
-    parser.add_argument("--solis-ip", default="192.168.11.214",
-                        help="Solis inverter Modbus TCP IP (default: 192.168.11.214)")
-    parser.add_argument("--solis-port", type=int, default=502,
-                        help="Solis inverter Modbus TCP port (default: 502)")
-    parser.add_argument("--solis-id", type=int, default=1,
-                        help="Modbus slave/device ID (default: 1)")
-    parser.add_argument("--solis-poll", type=int, default=5,
-                        help="Solis poll interval in seconds (default: 5)")
-    parser.add_argument("--no-solis", action="store_true",
-                        help="Disable the Solis reader")
+    # Solis — proxy from existing app
+    parser.add_argument("--solis-url", default="http://localhost:5000",
+                        help="Base URL of the existing Solis app (default: http://localhost:5000)")
 
     # SwitchDin (SP Pro via Stormcloud)
     parser.add_argument("--switchdin-user", default=None,
@@ -147,17 +142,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Start Solis reader
-    if not args.no_solis:
-        solis = SolisModbusReader(
-            inverter_ip=args.solis_ip,
-            inverter_port=args.solis_port,
-            slave_id=args.solis_id,
-            poll_interval=args.solis_poll,
-        )
-        solis.start()
-    else:
-        log.info("Solis reader disabled (--no-solis)")
+    # Solis proxy URL
+    solis_base_url = args.solis_url.rstrip("/")
+    log.info(f"Solis data proxied from {solis_base_url}")
 
     # Start SwitchDin reader
     if not args.no_switchdin and args.switchdin_user and args.switchdin_pass:
@@ -179,8 +166,6 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        if solis:
-            solis.stop()
         if switchdin:
             switchdin.stop()
 
