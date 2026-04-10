@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microgrid Monitor — Mooramoora</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #273548;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-orange: #f97316;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-purple: #a855f7;
+            --accent-cyan: #06b6d4;
+            --border: #334155;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+            padding: 1.2rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+
+        .header h1 span { color: var(--accent-cyan); }
+
+        .status-bar {
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            background: var(--text-muted);
+        }
+
+        .status-dot.online { background: var(--accent-green); }
+        .status-dot.stale { background: var(--accent-yellow); }
+        .status-dot.offline { background: var(--accent-red); }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        /* ---- SoC Gauge ---- */
+        .soc-section {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .soc-gauge-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            flex: 0 0 220px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .soc-value {
+            font-size: 3.5rem;
+            font-weight: 700;
+            line-height: 1;
+            margin: 0.5rem 0;
+        }
+
+        .soc-label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .soc-bar {
+            width: 100%;
+            height: 12px;
+            background: #334155;
+            border-radius: 6px;
+            margin-top: 1rem;
+            overflow: hidden;
+        }
+
+        .soc-bar-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.8s ease, background 0.8s ease;
+        }
+
+        /* ---- Metric cards ---- */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            flex: 1;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+            border: 1px solid var(--border);
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.3rem;
+        }
+
+        .metric-value {
+            font-size: 1.6rem;
+            font-weight: 600;
+        }
+
+        .metric-unit {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        /* ---- Section headers ---- */
+        .section-header {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 1.5rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section-icon { font-size: 1.2rem; }
+
+        /* ---- Charts ---- */
+        .chart-container {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.2rem;
+            border: 1px solid var(--border);
+            margin-bottom: 1.5rem;
+        }
+
+        .chart-title {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.8rem;
+        }
+
+        /* ---- Phase table ---- */
+        .phase-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .phase-table th {
+            text-align: left;
+            color: var(--text-muted);
+            font-weight: 500;
+            padding: 0.5rem 0.8rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .phase-table td {
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        /* ---- Offline banner ---- */
+        .offline-banner {
+            display: none;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid var(--accent-red);
+            border-radius: 8px;
+            padding: 0.8rem 1.2rem;
+            margin-bottom: 1rem;
+            color: var(--accent-red);
+            text-align: center;
+        }
+
+        .offline-banner.show { display: block; }
+
+        /* ---- Responsive ---- */
+        @media (max-width: 768px) {
+            .soc-section { flex-direction: column; }
+            .soc-gauge-card { flex: 1; }
+            .header { flex-direction: column; gap: 0.5rem; }
+            .container { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1><span>&#9889;</span> Microgrid Monitor — <span>Mooramoora</span></h1>
+    <div class="status-bar">
+        <span><span class="status-dot" id="solisStatusDot"></span>Solis: <span id="solisStatusText">—</span></span>
+        <span><span class="status-dot" id="eastronStatusDot"></span>Eastron: <span id="eastronStatusText">—</span></span>
+        <span>Updated: <span id="lastUpdate">—</span></span>
+    </div>
+</div>
+
+<div class="container">
+    <div class="offline-banner" id="offlineBanner">
+        No data received from site — last update: <span id="offlineTime">—</span>
+    </div>
+
+    <!-- ===== SOLIS SECTION ===== -->
+    <div class="section-header">
+        <span class="section-icon">&#9728;&#65039;</span> Solis 50kW Hybrid Inverter
+    </div>
+
+    <div class="soc-section">
+        <div class="soc-gauge-card">
+            <div class="soc-label">Battery State of Charge</div>
+            <div class="soc-value" id="socValue">—</div>
+            <div class="soc-bar">
+                <div class="soc-bar-fill" id="socBarFill" style="width: 0%"></div>
+            </div>
+        </div>
+        <div class="metrics-grid" id="solisMetrics">
+            <div class="metric-card">
+                <div class="metric-label">PV Power</div>
+                <div class="metric-value" id="pvPower">— <span class="metric-unit">W</span></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Battery Power</div>
+                <div class="metric-value" id="battPower">— <span class="metric-unit">W</span></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Grid Power</div>
+                <div class="metric-value" id="gridPower">— <span class="metric-unit">W</span></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">House Load</div>
+                <div class="metric-value" id="loadPower">— <span class="metric-unit">W</span></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Battery Voltage</div>
+                <div class="metric-value" id="battVoltage">— <span class="metric-unit">V</span></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Battery Current</div>
+                <div class="metric-value" id="battCurrent">— <span class="metric-unit">A</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SoC History Chart -->
+    <div class="chart-container">
+        <div class="chart-title">Battery SoC History (24h)</div>
+        <canvas id="socChart" height="80"></canvas>
+    </div>
+
+    <!-- Power Flow Chart -->
+    <div class="chart-container">
+        <div class="chart-title">Power Flow History (24h)</div>
+        <canvas id="powerChart" height="80"></canvas>
+    </div>
+
+    <!-- ===== EASTRON SECTION ===== -->
+    <div class="section-header">
+        <span class="section-icon">&#9889;</span> Eastron SDM630MCT Energy Meter
+    </div>
+
+    <div class="metrics-grid" id="eastronMetrics" style="margin-bottom: 1.5rem;">
+        <div class="metric-card">
+            <div class="metric-label">Total Power</div>
+            <div class="metric-value" id="emTotalPower">— <span class="metric-unit">W</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Import Energy</div>
+            <div class="metric-value" id="emImport">— <span class="metric-unit">kWh</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Export Energy</div>
+            <div class="metric-value" id="emExport">— <span class="metric-unit">kWh</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Frequency</div>
+            <div class="metric-value" id="emFreq">— <span class="metric-unit">Hz</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Avg Voltage</div>
+            <div class="metric-value" id="emVoltage">— <span class="metric-unit">V</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Neutral Current</div>
+            <div class="metric-value" id="emNeutral">— <span class="metric-unit">A</span></div>
+        </div>
+    </div>
+
+    <!-- Eastron Phase Table -->
+    <div class="chart-container">
+        <div class="chart-title">Phase Details</div>
+        <table class="phase-table" id="phaseTable">
+            <thead>
+                <tr>
+                    <th>Phase</th><th>Voltage</th><th>Current</th><th>Power</th><th>PF</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>L1</td><td id="emV1">—</td><td id="emI1">—</td><td id="emP1">—</td><td id="emPF1">—</td></tr>
+                <tr><td>L2</td><td id="emV2">—</td><td id="emI2">—</td><td id="emP2">—</td><td id="emPF2">—</td></tr>
+                <tr><td>L3</td><td id="emV3">—</td><td id="emI3">—</td><td id="emP3">—</td><td id="emPF3">—</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Eastron Power Chart -->
+    <div class="chart-container">
+        <div class="chart-title">Meter Power History (24h)</div>
+        <canvas id="eastronChart" height="80"></canvas>
+    </div>
+</div>
+
+<script>
+// ---- Chart setup ----
+const chartDefaults = {
+    responsive: true,
+    animation: { duration: 400 },
+    scales: {
+        x: { ticks: { color: '#64748b', maxTicksLimit: 12 }, grid: { color: '#1e293b' } },
+        y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }
+    },
+    plugins: { legend: { labels: { color: '#94a3b8' } } }
+};
+
+const socChart = new Chart(document.getElementById('socChart'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: 'SoC %',
+            data: [],
+            borderColor: '#22c55e',
+            backgroundColor: 'rgba(34,197,94,0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+        }]
+    },
+    options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, min: 0, max: 100 } } }
+});
+
+const powerChart = new Chart(document.getElementById('powerChart'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            { label: 'PV', data: [], borderColor: '#eab308', tension: 0.3, pointRadius: 0 },
+            { label: 'Battery', data: [], borderColor: '#22c55e', tension: 0.3, pointRadius: 0 },
+            { label: 'Grid', data: [], borderColor: '#3b82f6', tension: 0.3, pointRadius: 0 },
+            { label: 'Load', data: [], borderColor: '#f97316', tension: 0.3, pointRadius: 0 },
+        ]
+    },
+    options: chartDefaults
+});
+
+const eastronChart = new Chart(document.getElementById('eastronChart'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [
+            { label: 'Total Power (W)', data: [], borderColor: '#a855f7', tension: 0.3, pointRadius: 0 },
+            { label: 'Import (kWh)', data: [], borderColor: '#3b82f6', tension: 0.3, pointRadius: 0, yAxisID: 'y1' },
+            { label: 'Export (kWh)', data: [], borderColor: '#22c55e', tension: 0.3, pointRadius: 0, yAxisID: 'y1' },
+        ]
+    },
+    options: {
+        ...chartDefaults,
+        scales: {
+            ...chartDefaults.scales,
+            y1: { position: 'right', ticks: { color: '#64748b' }, grid: { display: false } }
+        }
+    }
+});
+
+// ---- Data fetching ----
+function fmt(v, decimals = 1) {
+    if (v === undefined || v === null || v === '') return '—';
+    return Number(v).toFixed(decimals);
+}
+
+function socColor(soc) {
+    if (soc >= 60) return '#22c55e';
+    if (soc >= 40) return '#eab308';
+    if (soc >= 20) return '#f97316';
+    return '#ef4444';
+}
+
+async function fetchData() {
+    try {
+        // Fetch all endpoints in parallel
+        const [solisRes, eastronRes, statusRes] = await Promise.all([
+            fetch('/api/data').then(r => r.json()).catch(() => null),
+            fetch('/api/eastron/data').then(r => r.json()).catch(() => null),
+            fetch('/api/status').then(r => r.json()).catch(() => null),
+        ]);
+
+        // Update status bar
+        if (statusRes) {
+            const solisOnline = statusRes.solis_connected;
+            const eastronOnline = statusRes.eastron_connected;
+            const lastPush = statusRes.last_push;
+
+            document.getElementById('solisStatusText').textContent = solisOnline ? 'Online' : 'Offline';
+            document.getElementById('eastronStatusText').textContent = eastronOnline ? 'Online' : 'Offline';
+            document.getElementById('lastUpdate').textContent = lastPush || '—';
+
+            const solisDot = document.getElementById('solisStatusDot');
+            const eastronDot = document.getElementById('eastronStatusDot');
+            solisDot.className = 'status-dot ' + (solisOnline ? 'online' : 'offline');
+            eastronDot.className = 'status-dot ' + (eastronOnline ? 'online' : 'offline');
+
+            // Offline banner — show if no push in last 3 minutes
+            const banner = document.getElementById('offlineBanner');
+            if (lastPush) {
+                const diff = (Date.now() - new Date(lastPush + ' UTC').getTime()) / 1000;
+                if (diff > 180) {
+                    banner.classList.add('show');
+                    document.getElementById('offlineTime').textContent = lastPush;
+                } else {
+                    banner.classList.remove('show');
+                }
+            }
+        }
+
+        // Update Solis data
+        if (solisRes && Object.keys(solisRes).length > 0) {
+            const soc = solisRes.battery_soc;
+            if (soc !== undefined) {
+                document.getElementById('socValue').textContent = Math.round(soc) + '%';
+                document.getElementById('socValue').style.color = socColor(soc);
+                const fill = document.getElementById('socBarFill');
+                fill.style.width = soc + '%';
+                fill.style.background = socColor(soc);
+            }
+            document.getElementById('pvPower').innerHTML = fmt(solisRes.total_pv_power, 0) + ' <span class="metric-unit">W</span>';
+            document.getElementById('battPower').innerHTML = fmt(solisRes.battery_power, 0) + ' <span class="metric-unit">W</span>';
+            document.getElementById('gridPower').innerHTML = fmt(solisRes.total_active_power, 0) + ' <span class="metric-unit">W</span>';
+            document.getElementById('loadPower').innerHTML = fmt(solisRes.house_load_power, 0) + ' <span class="metric-unit">W</span>';
+            document.getElementById('battVoltage').innerHTML = fmt(solisRes.battery_voltage, 1) + ' <span class="metric-unit">V</span>';
+            document.getElementById('battCurrent').innerHTML = fmt(solisRes.battery_current, 1) + ' <span class="metric-unit">A</span>';
+        }
+
+        // Update Eastron data
+        if (eastronRes && Object.keys(eastronRes).length > 0) {
+            document.getElementById('emTotalPower').innerHTML = fmt(eastronRes.total_power, 0) + ' <span class="metric-unit">W</span>';
+            document.getElementById('emImport').innerHTML = fmt(eastronRes.import_kwh, 1) + ' <span class="metric-unit">kWh</span>';
+            document.getElementById('emExport').innerHTML = fmt(eastronRes.export_kwh, 1) + ' <span class="metric-unit">kWh</span>';
+            document.getElementById('emFreq').innerHTML = fmt(eastronRes.frequency, 2) + ' <span class="metric-unit">Hz</span>';
+            document.getElementById('emVoltage').innerHTML = fmt(eastronRes.voltage_avg, 1) + ' <span class="metric-unit">V</span>';
+            document.getElementById('emNeutral').innerHTML = fmt(eastronRes.neutral_current, 2) + ' <span class="metric-unit">A</span>';
+
+            // Phase details
+            document.getElementById('emV1').textContent = fmt(eastronRes.voltage_l1) + ' V';
+            document.getElementById('emV2').textContent = fmt(eastronRes.voltage_l2) + ' V';
+            document.getElementById('emV3').textContent = fmt(eastronRes.voltage_l3) + ' V';
+            document.getElementById('emI1').textContent = fmt(eastronRes.current_l1, 2) + ' A';
+            document.getElementById('emI2').textContent = fmt(eastronRes.current_l2, 2) + ' A';
+            document.getElementById('emI3').textContent = fmt(eastronRes.current_l3, 2) + ' A';
+            document.getElementById('emP1').textContent = fmt(eastronRes.power_l1, 0) + ' W';
+            document.getElementById('emP2').textContent = fmt(eastronRes.power_l2, 0) + ' W';
+            document.getElementById('emP3').textContent = fmt(eastronRes.power_l3, 0) + ' W';
+            document.getElementById('emPF1').textContent = fmt(eastronRes.pf_l1, 3);
+            document.getElementById('emPF2').textContent = fmt(eastronRes.pf_l2, 3);
+            document.getElementById('emPF3').textContent = fmt(eastronRes.pf_l3, 3);
+        }
+    } catch (err) {
+        console.error('Fetch error:', err);
+    }
+}
+
+async function fetchHistory() {
+    try {
+        const [solisHist, eastronHist] = await Promise.all([
+            fetch('/api/history').then(r => r.json()).catch(() => []),
+            fetch('/api/eastron/history').then(r => r.json()).catch(() => []),
+        ]);
+
+        if (solisHist.length > 0) {
+            const labels = solisHist.map(h => h.timestamp.split(' ')[1]);
+            socChart.data.labels = labels;
+            socChart.data.datasets[0].data = solisHist.map(h => h.soc);
+            socChart.update('none');
+
+            powerChart.data.labels = labels;
+            powerChart.data.datasets[0].data = solisHist.map(h => h.pv_power);
+            powerChart.data.datasets[1].data = solisHist.map(h => h.battery_power);
+            powerChart.data.datasets[2].data = solisHist.map(h => h.grid_power);
+            powerChart.data.datasets[3].data = solisHist.map(h => h.load_power);
+            powerChart.update('none');
+        }
+
+        if (eastronHist.length > 0) {
+            const labels = eastronHist.map(h => h.timestamp.split(' ')[1]);
+            eastronChart.data.labels = labels;
+            eastronChart.data.datasets[0].data = eastronHist.map(h => h.total_power);
+            eastronChart.data.datasets[1].data = eastronHist.map(h => h.import_kwh);
+            eastronChart.data.datasets[2].data = eastronHist.map(h => h.export_kwh);
+            eastronChart.update('none');
+        }
+    } catch (err) {
+        console.error('History fetch error:', err);
+    }
+}
+
+// Poll every 15 seconds (data only arrives every 60s from the Pi)
+fetchData();
+fetchHistory();
+setInterval(fetchData, 15000);
+setInterval(fetchHistory, 60000);
+</script>
+</body>
+</html>

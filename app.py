@@ -3,16 +3,15 @@
 Microgrid Remote Monitor — Solis Inverter + Eastron Energy Meter
 ================================================================
 Reads registers from:
-  1. Solis 50kW Hybrid Inverter — via Modbus TCP (function code 0x04)
-  2. Eastron SDM630MCT V2 Energy Meter — via same Modbus TCP gateway
+  1. Solis 50kW Hybrid Inverter — direct Modbus TCP (function code 0x04)
+  2. Eastron SDM630MCT V2 Energy Meter — via Modbus TCP gateway
 
-Both devices share the same RS485 bus and Modbus TCP gateway but use
-different slave/device IDs.
+Each device can have its own IP address or they can share a gateway.
 
 Usage:
     python app.py --host 0.0.0.0 --port 5000 \\
-                  --gateway-ip 192.168.1.100 --gateway-port 502 \\
-                  --solis-id 1 --eastron-id 2
+                  --solis-ip 192.168.11.214 --solis-port 502 --solis-id 1 \\
+                  --eastron-ip 192.168.1.100 --eastron-port 502 --eastron-id 2
 """
 
 import argparse
@@ -470,13 +469,11 @@ def main():
     parser.add_argument("--port", type=int, default=5000,
                         help="Flask listen port (default: 5000)")
 
-    # Modbus TCP gateway (shared by both devices)
-    parser.add_argument("--gateway-ip", default="192.168.1.100",
-                        help="Modbus TCP gateway IP address (default: 192.168.1.100)")
-    parser.add_argument("--gateway-port", type=int, default=502,
-                        help="Modbus TCP port (default: 502)")
-
-    # Solis inverter
+    # Solis inverter — direct Modbus TCP connection
+    parser.add_argument("--solis-ip", default="192.168.11.214",
+                        help="Solis inverter Modbus TCP IP address (default: 192.168.11.214)")
+    parser.add_argument("--solis-port", type=int, default=502,
+                        help="Solis inverter Modbus TCP port (default: 502)")
     parser.add_argument("--solis-id", type=int, default=1,
                         help="Modbus slave/device ID of the Solis inverter (default: 1)")
     parser.add_argument("--solis-poll", type=int, default=5,
@@ -484,7 +481,11 @@ def main():
     parser.add_argument("--no-solis", action="store_true",
                         help="Disable the Solis inverter reader")
 
-    # Eastron energy meter
+    # Eastron energy meter — via Modbus TCP gateway
+    parser.add_argument("--eastron-ip", default="192.168.1.100",
+                        help="Eastron meter Modbus TCP gateway IP (default: 192.168.1.100)")
+    parser.add_argument("--eastron-port", type=int, default=502,
+                        help="Eastron meter Modbus TCP port (default: 502)")
     parser.add_argument("--eastron-id", type=int, default=2,
                         help="Modbus slave/device ID of the Eastron meter (default: 2)")
     parser.add_argument("--eastron-poll", type=int, default=5,
@@ -495,7 +496,9 @@ def main():
     parser.add_argument("--debug", action="store_true",
                         help="Enable Flask debug mode")
 
-    # Legacy compatibility: support old --inverter-ip / --slave-id args
+    # Legacy compatibility: support old --gateway-ip / --inverter-ip / --slave-id args
+    parser.add_argument("--gateway-ip", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--gateway-port", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--inverter-ip", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--inverter-port", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--slave-id", type=int, default=None, help=argparse.SUPPRESS)
@@ -503,17 +506,19 @@ def main():
 
     args = parser.parse_args()
 
-    # Legacy arg mapping
-    gw_ip = args.inverter_ip or args.gateway_ip
-    gw_port = args.inverter_port or args.gateway_port
+    # Legacy arg mapping — old args override new ones if provided
+    solis_ip = args.inverter_ip or args.gateway_ip or args.solis_ip
+    solis_port = args.inverter_port or args.gateway_port or args.solis_port
     solis_id = args.slave_id or args.solis_id
     solis_poll = args.poll_interval or args.solis_poll
+    eastron_ip = args.gateway_ip or args.eastron_ip
+    eastron_port = args.gateway_port or args.eastron_port
 
     # Start Solis reader
     if not args.no_solis:
         reader = SolisModbusReader(
-            inverter_ip=gw_ip,
-            inverter_port=gw_port,
+            inverter_ip=solis_ip,
+            inverter_port=solis_port,
             slave_id=solis_id,
             poll_interval=solis_poll,
         )
@@ -522,8 +527,8 @@ def main():
     # Start Eastron reader
     if not args.no_eastron:
         eastron = EastronModbusReader(
-            gateway_ip=gw_ip,
-            gateway_port=gw_port,
+            gateway_ip=eastron_ip,
+            gateway_port=eastron_port,
             slave_id=args.eastron_id,
             poll_interval=args.eastron_poll,
         )

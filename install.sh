@@ -46,7 +46,7 @@ Wants=network-online.target
 Type=simple
 User=$USER
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$VENV_DIR/bin/python app.py --gateway-ip 192.168.1.100 --gateway-port 502 --solis-id 1 --eastron-id 2 --solis-poll 5 --eastron-poll 5
+ExecStart=$VENV_DIR/bin/python app.py --solis-ip 192.168.11.214 --solis-port 502 --solis-id 1 --eastron-ip 192.168.1.100 --eastron-port 502 --eastron-id 2 --solis-poll 5 --eastron-poll 5
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -64,9 +64,10 @@ echo "============================================"
 echo " Setup complete!"
 echo "============================================"
 echo ""
-echo " IMPORTANT: Edit the gateway IP and device IDs in the service file:"
+echo " IMPORTANT: Edit the IP addresses and device IDs in the service file:"
 echo "   sudo nano $SERVICE_FILE"
-echo "   (change --gateway-ip to your Modbus TCP gateway IP)"
+echo "   (change --solis-ip to your Solis inverter IP, currently 192.168.11.214)"
+echo "   (change --eastron-ip to your Eastron meter gateway IP)"
 echo "   (change --solis-id / --eastron-id if your slave IDs differ)"
 echo ""
 echo " Then start the service:"

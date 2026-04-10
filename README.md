@@ -30,7 +30,7 @@ Edit the service file to set your gateway IP and device IDs:
 sudo nano /etc/systemd/system/solis-monitor.service
 ```
 
-Change `--gateway-ip`, `--solis-id`, and `--eastron-id` to match your setup.
+Change `--solis-ip`, `--eastron-ip`, and device IDs to match your setup.
 
 ### 4. Start
 
@@ -49,10 +49,12 @@ python app.py --help
 
   --host              Flask listen address       (default: 0.0.0.0)
   --port              Flask listen port          (default: 5000)
-  --gateway-ip        Modbus TCP gateway IP      (default: 192.168.1.100)
-  --gateway-port      Modbus TCP port            (default: 502)
+  --solis-ip          Solis inverter IP address  (default: 192.168.11.214)
+  --solis-port        Solis Modbus TCP port      (default: 502)
   --solis-id          Solis inverter slave ID    (default: 1)
   --solis-poll        Solis poll interval (sec)  (default: 5)
+  --eastron-ip        Eastron meter gateway IP   (default: 192.168.1.100)
+  --eastron-port      Eastron Modbus TCP port    (default: 502)
   --eastron-id        Eastron meter slave ID     (default: 2)
   --eastron-poll      Eastron poll interval (sec)(default: 5)
   --no-solis          Disable Solis reader
@@ -109,7 +111,7 @@ Each register value spans 2 consecutive registers (4 bytes, IEEE 754 big-endian 
 python simulator.py --port 5020
 
 # Terminal 2 — start app
-python app.py --gateway-ip 127.0.0.1 --gateway-port 5020
+python app.py --solis-ip 127.0.0.1 --solis-port 5020 --eastron-ip 127.0.0.1 --eastron-port 5020
 ```
 
 ## Network Setup
