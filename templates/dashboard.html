@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Microgrid Remote Monitor — Solis + Eastron + SP Pro</title>
+    <title>Microgrid Remote Monitor — Solis + Eastron + SP Pro (SwitchDin)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
         :root {
@@ -1142,7 +1142,7 @@ let lastSpProData = {};
 
 async function fetchSpProData() {
     try {
-        const res = await fetch('/api/sppro/data');
+        const res = await fetch('/api/switchdin/data');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const d = await res.json();
         lastSpProData = d;
@@ -1156,7 +1156,7 @@ async function fetchSpProData() {
 
 async function fetchSpProHistory() {
     try {
-        const res = await fetch('/api/sppro/history');
+        const res = await fetch('/api/switchdin/history');
         if (!res.ok) return;
         const h = await res.json();
         updateSpProCharts(h);
@@ -1179,45 +1179,45 @@ function updateSpProDashboard(d) {
     const soc = d.battery_soc ?? 0;
     drawSpSocGauge(soc);
 
-    // Battery info
-    document.getElementById('spBattVolt').textContent = fmt(d.battery_voltage, 1);
-    document.getElementById('spBattCurr').textContent = fmt(d.total_battery_current, 1);
+    // Battery info (SwitchDin provides battery_power in W after conversion)
+    document.getElementById('spBattVolt').textContent = fmt(d.l1_battery_volts, 1);
+    document.getElementById('spBattCurr').textContent = fmt(d.l1_battery_current, 1);
     document.getElementById('spBattPower').textContent = fmt(d.battery_power, 0);
 
-    // Key metrics
-    document.getElementById('spPvPower').innerHTML = fmt(d.total_pv_power, 0) + '<span class="metric-unit">W</span>';
-    document.getElementById('spSourcePower').innerHTML = fmt(d.total_source_power, 0) + '<span class="metric-unit">W</span>';
-    document.getElementById('spLoadPower').innerHTML = fmt(d.total_load_power, 0) + '<span class="metric-unit">W</span>';
-    document.getElementById('spInvPower').innerHTML = fmt(d.total_inverter_power, 0) + '<span class="metric-unit">W</span>';
-    document.getElementById('spFreq').innerHTML = fmt(d.inverter_frequency, 1) + '<span class="metric-unit">Hz</span>';
-    document.getElementById('spTotalBattCurr').innerHTML = fmt(d.total_battery_current, 1) + '<span class="metric-unit">A</span>';
+    // Key metrics (SwitchDin reader converts kW→W)
+    document.getElementById('spPvPower').innerHTML = fmt(d.pv_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('spSourcePower').innerHTML = fmt(d.grid_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('spLoadPower').innerHTML = fmt(d.load_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('spInvPower').innerHTML = fmt(d.inverter_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('spFreq').innerHTML = fmt(d.l1_grid_frequency, 1) + '<span class="metric-unit">Hz</span>';
+    document.getElementById('spTotalBattCurr').innerHTML = fmt(d.l1_battery_current, 1) + '<span class="metric-unit">A</span>';
 
     // Phase details table
     const phases = ['l1', 'l2', 'l3'];
     for (const p of phases) {
         const P = p.toUpperCase().replace('L', 'L');
         document.getElementById('sp' + P + 'pv').textContent = fmt(d[p + '_pv_power'], 0);
-        document.getElementById('sp' + P + 'src').textContent = fmt(d[p + '_source_power'], 0);
+        document.getElementById('sp' + P + 'src').textContent = fmt(d[p + '_grid_power'], 0);
         document.getElementById('sp' + P + 'load').textContent = fmt(d[p + '_load_power'], 0);
         document.getElementById('sp' + P + 'inv').textContent = fmt(d[p + '_inverter_power'], 0);
         document.getElementById('sp' + P + 'batt').textContent = fmt(d[p + '_battery_current'], 1);
         document.getElementById('sp' + P + 'lv').textContent = fmt(d[p + '_load_voltage'], 1) + ' V';
-        document.getElementById('sp' + P + 'gv').textContent = fmt(d[p + '_gen_voltage'], 1) + ' V';
+        document.getElementById('sp' + P + 'gv').textContent = fmt(d[p + '_grid_voltage'], 1) + ' V';
     }
 
     // Totals row
-    document.getElementById('spTotPv').textContent = fmt(d.total_pv_power, 0);
-    document.getElementById('spTotSrc').textContent = fmt(d.total_source_power, 0);
-    document.getElementById('spTotLoad').textContent = fmt(d.total_load_power, 0);
-    document.getElementById('spTotInv').textContent = fmt(d.total_inverter_power, 0);
-    document.getElementById('spTotBatt').textContent = fmt(d.total_battery_current, 1);
+    document.getElementById('spTotPv').textContent = fmt(d.pv_power, 0);
+    document.getElementById('spTotSrc').textContent = fmt(d.grid_power, 0);
+    document.getElementById('spTotLoad').textContent = fmt(d.load_power, 0);
+    document.getElementById('spTotInv').textContent = fmt(d.inverter_power, 0);
+    document.getElementById('spTotBatt').textContent = fmt(d.l1_battery_current, 1);
 }
 
 function updateSpProCharts(h) {
     spPowerChart.data.labels = h.timestamps;
-    spPowerChart.data.datasets[0].data = h.total_pv_power;
-    spPowerChart.data.datasets[1].data = h.total_load_power;
-    spPowerChart.data.datasets[2].data = h.total_source_power;
+    spPowerChart.data.datasets[0].data = h.pv_power;
+    spPowerChart.data.datasets[1].data = h.load_power;
+    spPowerChart.data.datasets[2].data = h.grid_power;
     spPowerChart.data.datasets[3].data = h.battery_soc;
     spPowerChart.update('none');
 }
@@ -1250,7 +1250,7 @@ setInterval(fetchHistory, 60000);
 setInterval(fetchStatus, 30000);
 setInterval(fetchEastronData, POLL_MS);
 setInterval(fetchEastronHistory, 60000);
-setInterval(fetchSpProData, POLL_MS);
+setInterval(fetchSpProData, 60000);      // SwitchDin updates every ~60s
 setInterval(fetchSpProHistory, 60000);
 setInterval(fetchMessage, 300000);
 </script>

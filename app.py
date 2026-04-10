@@ -30,6 +30,7 @@ from pymodbus.exceptions import ModbusIOException
 
 from eastron_reader import EastronModbusReader
 from sppro_reader import SPProModbusReader
+from switchdin_reader import SwitchDinReader
 
 # NOTE: pymodbus v3.6+ uses 'device_id' parameter.
 # If using an older version (v3.0-3.5), change 'device_id' to 'slave' in
@@ -418,6 +419,7 @@ class SolisModbusReader:
 reader: SolisModbusReader = None
 eastron: EastronModbusReader = None
 sppro: SPProModbusReader = None
+switchdin: SwitchDinReader = None
 
 
 # ---------------------------------------------------------------------------
@@ -508,6 +510,33 @@ def api_sppro_status():
 
 
 # ---------------------------------------------------------------------------
+# SwitchDin (SP Pro via Stormcloud) API routes
+# ---------------------------------------------------------------------------
+@app.route("/api/switchdin/data")
+def api_switchdin_data():
+    """Return current SP Pro data from SwitchDin Stormcloud."""
+    if switchdin is None:
+        return jsonify({"error": "SwitchDin reader not initialised"}), 503
+    return jsonify(switchdin.get_data())
+
+
+@app.route("/api/switchdin/history")
+def api_switchdin_history():
+    """Return SwitchDin historical data for charts."""
+    if switchdin is None:
+        return jsonify({"error": "SwitchDin reader not initialised"}), 503
+    return jsonify(switchdin.get_history())
+
+
+@app.route("/api/switchdin/status")
+def api_switchdin_status():
+    """Return SwitchDin connection/polling status."""
+    if switchdin is None:
+        return jsonify({"error": "SwitchDin reader not initialised"}), 503
+    return jsonify(switchdin.get_status())
+
+
+# ---------------------------------------------------------------------------
 # Editable message (read from message.txt in the app directory)
 # ---------------------------------------------------------------------------
 MESSAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "message.txt")
@@ -529,7 +558,7 @@ def api_message():
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
-    global reader, eastron, sppro
+    global reader, eastron, sppro, switchdin
 
     parser = argparse.ArgumentParser(
         description="Microgrid Remote Monitor — Solis Inverter + Eastron Energy Meter"
@@ -574,6 +603,19 @@ def main():
                         help="SP Pro poll interval in seconds (default: 5)")
     parser.add_argument("--no-sppro", action="store_true",
                         help="Disable the SP Pro inverter reader")
+
+    # SwitchDin Stormcloud — SP Pro data via cloud API
+    parser.add_argument("--switchdin-user", default=None,
+                        help="SwitchDin login username (email)")
+    parser.add_argument("--switchdin-pass", default=None,
+                        help="SwitchDin login password")
+    parser.add_argument("--switchdin-uuid",
+                        default="20cb2a7a-29b5-4f20-b460-0edf9f353e9f",
+                        help="SwitchDin unit UUID")
+    parser.add_argument("--switchdin-poll", type=int, default=60,
+                        help="SwitchDin poll interval in seconds (default: 60)")
+    parser.add_argument("--no-switchdin", action="store_true",
+                        help="Disable the SwitchDin cloud reader")
 
     parser.add_argument("--debug", action="store_true",
                         help="Enable Flask debug mode")
@@ -642,7 +684,7 @@ def main():
         )
         eastron.start()
 
-    # Start SP Pro reader
+    # Start SP Pro reader (direct Modbus — disabled by default now)
     if not args.no_sppro:
         sppro = SPProModbusReader(
             ip=args.sppro_ip,
@@ -650,6 +692,18 @@ def main():
             poll_interval=args.sppro_poll,
         )
         sppro.start()
+
+    # Start SwitchDin reader (SP Pro via Stormcloud cloud API)
+    if not args.no_switchdin and args.switchdin_user and args.switchdin_pass:
+        switchdin = SwitchDinReader(
+            username=args.switchdin_user,
+            password=args.switchdin_pass,
+            unit_uuid=args.switchdin_uuid,
+            poll_interval=args.switchdin_poll,
+        )
+        switchdin.start()
+    elif not args.no_switchdin:
+        log.warning("SwitchDin: --switchdin-user and --switchdin-pass required (skipping)")
 
     log.info(f"Starting web server on {args.host}:{args.port}")
     try:
@@ -663,6 +717,8 @@ def main():
             eastron.stop()
         if sppro:
             sppro.stop()
+        if switchdin:
+            switchdin.stop()
         if shared_client:
             shared_client.close()
             log.info("Shared Modbus connection closed")

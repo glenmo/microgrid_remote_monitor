@@ -135,9 +135,7 @@ class SPProModbusReader:
         Returns the raw signed 16-bit value, or None on error.
         """
         if not self.connected:
-            self.connect()
-            if not self.connected:
-                return None
+            return None
         try:
             result = self.client.read_holding_registers(
                 address=address,
@@ -169,6 +167,13 @@ class SPProModbusReader:
 
     def poll_once(self):
         """Read all three slaves and combine the data."""
+        # Ensure we're connected before attempting reads
+        if not self.connected:
+            self.connect()
+            if not self.connected:
+                self.read_errors += 1
+                return
+
         now = datetime.now()
 
         # Read each slave (L1, L2, L3)
@@ -254,13 +259,21 @@ class SPProModbusReader:
                     self.history[key].append(combined.get(key, 0))
 
     def _poll_loop(self):
-        """Background polling loop."""
+        """Background polling loop with backoff on connection failure."""
+        retry_delay = self.poll_interval
         while not self._stop_event.is_set():
             try:
                 self.poll_once()
+                if self.connected:
+                    retry_delay = self.poll_interval  # reset on success
+                else:
+                    # Back off when not connected (max 60s between retries)
+                    retry_delay = min(retry_delay * 2, 60)
+                    log.info(f"SP Pro not connected, retrying in {retry_delay}s")
             except Exception as e:
                 log.error(f"SP Pro poll error: {e}")
-            self._stop_event.wait(self.poll_interval)
+                retry_delay = min(retry_delay * 2, 60)
+            self._stop_event.wait(retry_delay)
 
     def start(self):
         """Start background polling thread."""
