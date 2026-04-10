@@ -327,7 +327,8 @@
 <div class="header">
     <h1><span>&#9883;</span> Microgrid Remote Monitor</h1>
     <div class="header-status">
-        <span id="conn-status"><span class="status-dot warn"></span>Connecting...</span>
+        <!-- Solis hidden (read by other app) -->
+        <span id="conn-status" style="display:none;"></span>
         <!-- Eastron meter hidden (disconnected) -->
         <span id="eastron-conn" style="display:none;"></span>
         <span id="sppro-conn" style="margin-left:8px;"><span class="status-dot warn"></span>SP Pro...</span>
@@ -338,14 +339,14 @@
 <!-- Dashboard -->
 <div class="dashboard">
 
-    <!-- === SOLIS INVERTER SECTION === -->
-    <div class="section-divider">
+    <!-- === SOLIS INVERTER SECTION (hidden — read by other app on port 5000) === -->
+    <div class="section-divider" style="display:none;">
         <span class="device-tag tag-solis">Solis S6 50kW Hybrid</span>
         <hr>
     </div>
 
     <!-- Top row: SoC + key metrics -->
-    <div class="top-row">
+    <div class="top-row" style="display:none;">
         <!-- Battery SoC Gauge -->
         <div class="card soc-card">
             <div class="card-title">Battery State of Charge</div>
@@ -405,10 +406,10 @@
     </div>
 
     <!-- Info message (editable via message.txt) -->
-    <div class="message-box" id="messageBox"></div>
+    <div class="message-box" id="messageBox" style="display:none;"></div>
 
-    <!-- Charts -->
-    <div class="charts-row">
+    <!-- Solis Charts (hidden) -->
+    <div class="charts-row" style="display:none;">
         <div class="card">
             <div class="card-title">Battery SoC History</div>
             <div class="chart-container"><canvas id="chartSoc"></canvas></div>
@@ -419,8 +420,8 @@
         </div>
     </div>
 
-    <!-- PV Strings & Grid detail -->
-    <div class="detail-row">
+    <!-- Solis PV Strings & Grid detail (hidden) -->
+    <div class="detail-row" style="display:none;">
         <div class="card">
             <div class="card-title">PV String Details</div>
             <table class="pv-table">
@@ -568,15 +569,15 @@
         <div class="metrics-grid">
             <div class="metric">
                 <div class="metric-icon icon-solar">&#9728;</div>
-                <div class="metric-label">Total PV Power</div>
+                <div class="metric-label">PV Power</div>
                 <div class="metric-value" id="spPvPower">--<span class="metric-unit">W</span></div>
-                <div class="metric-sub">All 3 phases combined</div>
+                <div class="metric-sub">Solar generation</div>
             </div>
             <div class="metric">
                 <div class="metric-icon icon-grid">&#9889;</div>
-                <div class="metric-label">Source Power</div>
+                <div class="metric-label">Grid Power</div>
                 <div class="metric-value" id="spSourcePower">--<span class="metric-unit">W</span></div>
-                <div class="metric-sub">Grid / Generator</div>
+                <div class="metric-sub">+export / -import</div>
             </div>
             <div class="metric">
                 <div class="metric-icon" style="background:rgba(249,115,22,0.15);color:var(--accent-orange);">&#8594;</div>
@@ -585,22 +586,22 @@
                 <div class="metric-sub">Total consumption</div>
             </div>
             <div class="metric">
-                <div class="metric-icon" style="background:rgba(168,85,247,0.15);color:var(--accent-purple);">&#9881;</div>
-                <div class="metric-label">Inverter Power</div>
+                <div class="metric-icon icon-battery">&#128267;</div>
+                <div class="metric-label">Battery Power</div>
                 <div class="metric-value" id="spInvPower">--<span class="metric-unit">W</span></div>
-                <div class="metric-sub">AC output total</div>
+                <div class="metric-sub">+charge / -discharge</div>
             </div>
             <div class="metric">
                 <div class="metric-icon icon-freq">&#8776;</div>
                 <div class="metric-label">Frequency</div>
                 <div class="metric-value" id="spFreq">--<span class="metric-unit">Hz</span></div>
-                <div class="metric-sub">Inverter output</div>
+                <div class="metric-sub">Grid (SmartRail)</div>
             </div>
             <div class="metric">
-                <div class="metric-icon icon-battery">&#128267;</div>
-                <div class="metric-label">Battery Current</div>
-                <div class="metric-value" id="spTotalBattCurr">--<span class="metric-unit">A</span></div>
-                <div class="metric-sub">All inverters</div>
+                <div class="metric-icon" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan);">&#9879;</div>
+                <div class="metric-label">Grid Meter</div>
+                <div class="metric-value" id="spTotalBattCurr">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">SmartRail total</div>
             </div>
         </div>
     </div>
@@ -608,15 +609,15 @@
     <!-- SP Pro phase details + charts -->
     <div class="charts-row">
         <div class="card">
-            <div class="card-title">SP Pro — Phase Details</div>
+            <div class="card-title">SP Pro — Phase Details (SmartRail Meter)</div>
             <table class="pv-table">
-                <thead><tr><th>Phase</th><th>PV (W)</th><th>Source (W)</th><th>Load (W)</th><th>Inverter (W)</th><th>Batt (A)</th><th>Load V</th><th>Gen V</th></tr></thead>
+                <thead><tr><th>Phase</th><th>Voltage (V)</th><th>Current (A)</th><th>Power (W)</th><th>PF</th></tr></thead>
                 <tbody>
-                    <tr><td>L1</td><td id="spL1pv">--</td><td id="spL1src">--</td><td id="spL1load">--</td><td id="spL1inv">--</td><td id="spL1batt">--</td><td id="spL1lv">--</td><td id="spL1gv">--</td></tr>
-                    <tr><td>L2</td><td id="spL2pv">--</td><td id="spL2src">--</td><td id="spL2load">--</td><td id="spL2inv">--</td><td id="spL2batt">--</td><td id="spL2lv">--</td><td id="spL2gv">--</td></tr>
-                    <tr><td>L3</td><td id="spL3pv">--</td><td id="spL3src">--</td><td id="spL3load">--</td><td id="spL3inv">--</td><td id="spL3batt">--</td><td id="spL3lv">--</td><td id="spL3gv">--</td></tr>
+                    <tr><td>L1</td><td id="spL1lv">--</td><td id="spL1batt">--</td><td id="spL1src">--</td><td id="spL1gv">--</td></tr>
+                    <tr><td>L2</td><td id="spL2lv">--</td><td id="spL2batt">--</td><td id="spL2src">--</td><td id="spL2gv">--</td></tr>
+                    <tr><td>L3</td><td id="spL3lv">--</td><td id="spL3batt">--</td><td id="spL3src">--</td><td id="spL3gv">--</td></tr>
                     <tr style="font-weight:bold;border-top:2px solid var(--border);">
-                        <td>Total</td><td id="spTotPv">--</td><td id="spTotSrc">--</td><td id="spTotLoad">--</td><td id="spTotInv">--</td><td id="spTotBatt">--</td><td>—</td><td>—</td>
+                        <td>Total</td><td>—</td><td>—</td><td id="spTotSrc">--</td><td>—</td>
                     </tr>
                 </tbody>
             </table>
@@ -628,7 +629,7 @@
     </div>
 
     <!-- Bottom: energy + status -->
-    <div class="card">
+    <div class="card" style="display:none;">
         <div class="card-title">System Information</div>
         <div class="status-bar" id="sysInfo">
             <div class="status-item">Total PV: <strong id="pvTotal">--</strong> kWh</div>
@@ -1189,29 +1190,22 @@ function updateSpProDashboard(d) {
     document.getElementById('spPvPower').innerHTML = fmt(d.pv_power, 0) + '<span class="metric-unit">W</span>';
     document.getElementById('spSourcePower').innerHTML = fmt(d.grid_power, 0) + '<span class="metric-unit">W</span>';
     document.getElementById('spLoadPower').innerHTML = fmt(d.load_power, 0) + '<span class="metric-unit">W</span>';
-    document.getElementById('spInvPower').innerHTML = fmt(d.inverter_power, 0) + '<span class="metric-unit">W</span>';
+    document.getElementById('spInvPower').innerHTML = fmt(d.battery_power, 0) + '<span class="metric-unit">W</span>';
     document.getElementById('spFreq').innerHTML = fmt(d.grid_frequency, 1) + '<span class="metric-unit">Hz</span>';
     document.getElementById('spTotalBattCurr').innerHTML = fmt(d.smartrail_total_power, 0) + '<span class="metric-unit">W</span>';
 
-    // Phase details table — using SmartRail 3-phase meter data
+    // Phase details table — SmartRail 3-phase meter data
     const phases = ['l1', 'l2', 'l3'];
     for (const p of phases) {
         const P = p.toUpperCase().replace('L', 'L');
-        document.getElementById('sp' + P + 'pv').textContent = '--';
-        document.getElementById('sp' + P + 'src').textContent = fmt(d[p + '_grid_power'], 0);
-        document.getElementById('sp' + P + 'load').textContent = '--';
-        document.getElementById('sp' + P + 'inv').textContent = '--';
+        document.getElementById('sp' + P + 'lv').textContent = fmt(d[p + '_grid_voltage'], 1);
         document.getElementById('sp' + P + 'batt').textContent = fmt(d[p + '_grid_current'], 1);
-        document.getElementById('sp' + P + 'lv').textContent = fmt(d[p + '_grid_voltage'], 1) + ' V';
-        document.getElementById('sp' + P + 'gv').textContent = 'PF ' + fmt(d[p + '_power_factor'], 2);
+        document.getElementById('sp' + P + 'src').textContent = fmt(d[p + '_grid_power'], 0);
+        document.getElementById('sp' + P + 'gv').textContent = fmt(d[p + '_power_factor'], 3);
     }
 
     // Totals row
-    document.getElementById('spTotPv').textContent = fmt(d.pv_power, 0);
     document.getElementById('spTotSrc').textContent = fmt(d.smartrail_total_power, 0);
-    document.getElementById('spTotLoad').textContent = fmt(d.load_power, 0);
-    document.getElementById('spTotInv').textContent = fmt(d.inverter_power, 0);
-    document.getElementById('spTotBatt').textContent = '--';
 }
 
 function updateSpProCharts(h) {
@@ -1237,9 +1231,10 @@ async function fetchMessage() {
 // =========================================================================
 // Polling loops
 // =========================================================================
-fetchData();
-fetchHistory();
-fetchStatus();
+// Solis disabled (read by other app on port 5000)
+// fetchData();
+// fetchHistory();
+// fetchStatus();
 // Eastron disabled (equipment disconnected)
 // fetchEastronData();
 // fetchEastronHistory();
@@ -1247,9 +1242,9 @@ fetchSpProData();
 fetchSpProHistory();
 fetchMessage();
 
-setInterval(fetchData, POLL_MS);
-setInterval(fetchHistory, 60000);
-setInterval(fetchStatus, 30000);
+// setInterval(fetchData, POLL_MS);
+// setInterval(fetchHistory, 60000);
+// setInterval(fetchStatus, 30000);
 // setInterval(fetchEastronData, POLL_MS);
 // setInterval(fetchEastronHistory, 60000);
 setInterval(fetchSpProData, 60000);      // SwitchDin updates every ~60s
