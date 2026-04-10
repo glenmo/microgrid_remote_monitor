@@ -327,8 +327,7 @@
 <div class="header">
     <h1><span>&#9883;</span> Microgrid Remote Monitor</h1>
     <div class="header-status">
-        <!-- Solis hidden (read by other app) -->
-        <span id="conn-status" style="display:none;"></span>
+        <span id="conn-status"><span class="status-dot warn"></span>Solis...</span>
         <!-- Eastron meter hidden (disconnected) -->
         <span id="eastron-conn" style="display:none;"></span>
         <span id="sppro-conn" style="margin-left:8px;"><span class="status-dot warn"></span>SP Pro...</span>
@@ -339,14 +338,14 @@
 <!-- Dashboard -->
 <div class="dashboard">
 
-    <!-- === SOLIS INVERTER SECTION (hidden — read by other app on port 5000) === -->
-    <div class="section-divider" style="display:none;">
+    <!-- === SOLIS INVERTER SECTION === -->
+    <div class="section-divider">
         <span class="device-tag tag-solis">Solis S6 50kW Hybrid</span>
         <hr>
     </div>
 
     <!-- Top row: SoC + key metrics -->
-    <div class="top-row" style="display:none;">
+    <div class="top-row">
         <!-- Battery SoC Gauge -->
         <div class="card soc-card">
             <div class="card-title">Battery State of Charge</div>
@@ -406,10 +405,10 @@
     </div>
 
     <!-- Info message (editable via message.txt) -->
-    <div class="message-box" id="messageBox" style="display:none;"></div>
+    <div class="message-box" id="messageBox"></div>
 
-    <!-- Solis Charts (hidden) -->
-    <div class="charts-row" style="display:none;">
+    <!-- Solis Charts -->
+    <div class="charts-row">
         <div class="card">
             <div class="card-title">Battery SoC History</div>
             <div class="chart-container"><canvas id="chartSoc"></canvas></div>
@@ -420,8 +419,8 @@
         </div>
     </div>
 
-    <!-- Solis PV Strings & Grid detail (hidden) -->
-    <div class="detail-row" style="display:none;">
+    <!-- Solis PV Strings & Grid detail -->
+    <div class="detail-row">
         <div class="card">
             <div class="card-title">PV String Details</div>
             <table class="pv-table">
@@ -1231,10 +1230,10 @@ async function fetchMessage() {
 // =========================================================================
 // Polling loops
 // =========================================================================
-// Solis disabled (read by other app on port 5000)
-// fetchData();
-// fetchHistory();
-// fetchStatus();
+// Solis polling
+fetchData();
+fetchHistory();
+fetchStatus();
 // Eastron disabled (equipment disconnected)
 // fetchEastronData();
 // fetchEastronHistory();
@@ -1242,9 +1241,9 @@ fetchSpProData();
 fetchSpProHistory();
 fetchMessage();
 
-// setInterval(fetchData, POLL_MS);
-// setInterval(fetchHistory, 60000);
-// setInterval(fetchStatus, 30000);
+setInterval(fetchData, POLL_MS);
+setInterval(fetchHistory, 60000);
+setInterval(fetchStatus, 30000);
 // setInterval(fetchEastronData, POLL_MS);
 // setInterval(fetchEastronHistory, 60000);
 setInterval(fetchSpProData, 60000);      // SwitchDin updates every ~60s
