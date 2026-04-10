@@ -261,7 +261,7 @@ class SwitchDinReader:
 
         # SwitchDin power values are in kW — convert to W for the dashboard
         for key in list(combined.keys()):
-            if "power" in key or "reactive_power" in key:
+            if ("power" in key or "reactive_power" in key) and "power_factor" not in key:
                 combined[key] = round(combined[key] * 1000, 1)  # kW → W
 
         # Voltage and frequency don't need conversion (already V and Hz)
