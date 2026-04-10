@@ -1179,9 +1179,9 @@ function updateSpProDashboard(d) {
     const soc = d.battery_soc ?? 0;
     drawSpSocGauge(soc);
 
-    // Battery info (SwitchDin provides battery_power in W after conversion)
-    document.getElementById('spBattVolt').textContent = fmt(d.l1_battery_volts, 1);
-    document.getElementById('spBattCurr').textContent = fmt(d.l1_battery_current, 1);
+    // Battery info
+    document.getElementById('spBattVolt').textContent = fmt(d.l1_grid_voltage, 1);
+    document.getElementById('spBattCurr').textContent = '--';
     document.getElementById('spBattPower').textContent = fmt(d.battery_power, 0);
 
     // Key metrics (SwitchDin reader converts kW→W)
@@ -1189,28 +1189,28 @@ function updateSpProDashboard(d) {
     document.getElementById('spSourcePower').innerHTML = fmt(d.grid_power, 0) + '<span class="metric-unit">W</span>';
     document.getElementById('spLoadPower').innerHTML = fmt(d.load_power, 0) + '<span class="metric-unit">W</span>';
     document.getElementById('spInvPower').innerHTML = fmt(d.inverter_power, 0) + '<span class="metric-unit">W</span>';
-    document.getElementById('spFreq').innerHTML = fmt(d.l1_grid_frequency, 1) + '<span class="metric-unit">Hz</span>';
-    document.getElementById('spTotalBattCurr').innerHTML = fmt(d.l1_battery_current, 1) + '<span class="metric-unit">A</span>';
+    document.getElementById('spFreq').innerHTML = fmt(d.grid_frequency, 1) + '<span class="metric-unit">Hz</span>';
+    document.getElementById('spTotalBattCurr').innerHTML = fmt(d.smartrail_total_power, 0) + '<span class="metric-unit">W</span>';
 
-    // Phase details table
+    // Phase details table — using SmartRail 3-phase meter data
     const phases = ['l1', 'l2', 'l3'];
     for (const p of phases) {
         const P = p.toUpperCase().replace('L', 'L');
-        document.getElementById('sp' + P + 'pv').textContent = fmt(d[p + '_pv_power'], 0);
+        document.getElementById('sp' + P + 'pv').textContent = '--';
         document.getElementById('sp' + P + 'src').textContent = fmt(d[p + '_grid_power'], 0);
-        document.getElementById('sp' + P + 'load').textContent = fmt(d[p + '_load_power'], 0);
-        document.getElementById('sp' + P + 'inv').textContent = fmt(d[p + '_inverter_power'], 0);
-        document.getElementById('sp' + P + 'batt').textContent = fmt(d[p + '_battery_current'], 1);
-        document.getElementById('sp' + P + 'lv').textContent = fmt(d[p + '_load_voltage'], 1) + ' V';
-        document.getElementById('sp' + P + 'gv').textContent = fmt(d[p + '_grid_voltage'], 1) + ' V';
+        document.getElementById('sp' + P + 'load').textContent = '--';
+        document.getElementById('sp' + P + 'inv').textContent = '--';
+        document.getElementById('sp' + P + 'batt').textContent = fmt(d[p + '_grid_current'], 1);
+        document.getElementById('sp' + P + 'lv').textContent = fmt(d[p + '_grid_voltage'], 1) + ' V';
+        document.getElementById('sp' + P + 'gv').textContent = 'PF ' + fmt(d[p + '_power_factor'], 2);
     }
 
     // Totals row
     document.getElementById('spTotPv').textContent = fmt(d.pv_power, 0);
-    document.getElementById('spTotSrc').textContent = fmt(d.grid_power, 0);
+    document.getElementById('spTotSrc').textContent = fmt(d.smartrail_total_power, 0);
     document.getElementById('spTotLoad').textContent = fmt(d.load_power, 0);
     document.getElementById('spTotInv').textContent = fmt(d.inverter_power, 0);
-    document.getElementById('spTotBatt').textContent = fmt(d.l1_battery_current, 1);
+    document.getElementById('spTotBatt').textContent = '--';
 }
 
 function updateSpProCharts(h) {

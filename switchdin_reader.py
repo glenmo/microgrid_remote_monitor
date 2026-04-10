@@ -59,24 +59,23 @@ SITE_METRICS = {
     "inverter_power":  "SWDINPV.MMXN4.TotW.instMag[MX]",
 }
 
-# Per-phase SP Pro metrics  (n = 0 → L1, 1 → L2, 2 → L3)
-def _sppro_key(n, suffix):
-    return f"SWDINPV.SPPRO{{{n}}}.{suffix}"
-
+# Per-phase metrics from SmartRail X835 3-Phase Meter
+# MMXU1 = Phase 1 (L1), MMXU2 = Phase 2 (L2), MMXU3 = Phase 3 (L3)
+# MMXN3 = 3-phase totals
 PHASE_METRICS = {}
-for phase_idx, phase_label in enumerate(["l1", "l2", "l3"]):
-    PHASE_METRICS[f"{phase_label}_pv_power"]       = _sppro_key(phase_idx, "MMXN1.TotW.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_load_power"]      = _sppro_key(phase_idx, "MMXN2.TotW.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_grid_power"]      = _sppro_key(phase_idx, "MMXN3.TotW.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_inverter_power"]  = _sppro_key(phase_idx, "MMXN4.TotW.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_battery_volts"]   = _sppro_key(phase_idx, "ZBAT1.Vol.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_battery_current"] = _sppro_key(phase_idx, "ZBAT1.Cur.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_battery_power"]   = _sppro_key(phase_idx, "ZBAT1.TotW.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_battery_soc"]     = _sppro_key(phase_idx, "ZBAT1.SoC.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_battery_temp"]    = _sppro_key(phase_idx, "ZBAT1.Tmp.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_load_voltage"]    = _sppro_key(phase_idx, "MMXN2.Vol.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_grid_voltage"]    = _sppro_key(phase_idx, "MMXN3.Vol.instMag[MX]")
-    PHASE_METRICS[f"{phase_label}_grid_frequency"]  = _sppro_key(phase_idx, "MMXN3.Hz.instMag[MX]")
+for phase_num, phase_label in enumerate(["l1", "l2", "l3"], start=1):
+    pfx = f"SWDINPV.SMART1.MMXU{phase_num}"
+    PHASE_METRICS[f"{phase_label}_grid_voltage"]    = f"{pfx}.Vol.instMag[MX]"
+    PHASE_METRICS[f"{phase_label}_grid_current"]    = f"{pfx}.Cur.instMag[MX]"
+    PHASE_METRICS[f"{phase_label}_grid_power"]      = f"{pfx}.TotW.instMag[MX]"
+    PHASE_METRICS[f"{phase_label}_power_factor"]    = f"{pfx}.PF.instMag[MX]"
+    PHASE_METRICS[f"{phase_label}_reactive_power"]  = f"{pfx}.VAr.instMag[MX]"
+
+# Grid frequency from SmartRail (single value, same for all phases)
+PHASE_METRICS["grid_frequency"] = "SWDINPV.SMART1.MMXN3.Freq.instMag[MX]"
+
+# Total grid power from SmartRail
+PHASE_METRICS["smartrail_total_power"] = "SWDINPV.SMART1.MMXN3.TotW.instMag[MX]"
 
 # Combined dict of all metrics we want to fetch
 ALL_METRICS = {**SITE_METRICS, **PHASE_METRICS}
@@ -187,11 +186,12 @@ class SwitchDinReader:
         from_ms = now_ms - window_ms
 
         # Build the metrics parameter — parentheses around CSV, keys URL-encoded
+        # Keep commas, curly braces, and dots safe (API expects them literal)
         metrics_csv = ",".join(metric_keys)
         url = (
             f"{CHARTDATA_URL}?field=unit_uuid"
             f"&uuid={self.unit_uuid}"
-            f"&metrics=({quote(metrics_csv, safe=',')})"
+            f"&metrics=({quote(metrics_csv, safe=',.{}')})"
             f"&period={period}"
             f"&fromts={from_ms}&tots={now_ms}"
         )
@@ -232,10 +232,14 @@ class SwitchDinReader:
     # ------------------------------------------------------------------
     def poll_once(self):
         """Fetch all metrics and update the data dict."""
+        # Split into batches of ~10 metrics to avoid URL length issues
         all_keys = list(ALL_METRICS.values())
-
-        # Fetch in one batch (the API supports multiple metrics per call)
-        raw_values = self._fetch_chartdata(all_keys)
+        batch_size = 10
+        raw_values = {}
+        for i in range(0, len(all_keys), batch_size):
+            batch = all_keys[i:i + batch_size]
+            result = self._fetch_chartdata(batch)
+            raw_values.update(result)
 
         self.total_reads += 1
 
@@ -246,6 +250,7 @@ class SwitchDinReader:
 
         self.connected = True
         now = datetime.now()
+        log.info(f"SwitchDin: Got {len(raw_values)} metrics")
 
         # Map API keys back to friendly names
         combined = {}
@@ -254,21 +259,12 @@ class SwitchDinReader:
             if friendly:
                 combined[friendly] = round(value, 3)
 
-        # Compute totals from per-phase data if site aggregates are missing
-        for metric in ["pv_power", "load_power", "grid_power", "inverter_power"]:
-            if metric not in combined:
-                phase_sum = sum(
-                    combined.get(f"{p}_{metric.split('_', 1)[0]}_{metric.split('_', 1)[1]}", 0)
-                    for p in ["l1", "l2", "l3"]
-                )
-                if phase_sum:
-                    combined[metric] = round(phase_sum, 3)
-
-        # Note: SwitchDin power values are in kW — convert to W for consistency
-        # with the existing dashboard that expects watts
+        # SwitchDin power values are in kW — convert to W for the dashboard
         for key in list(combined.keys()):
-            if "power" in key:
+            if "power" in key or "reactive_power" in key:
                 combined[key] = round(combined[key] * 1000, 1)  # kW → W
+
+        # Voltage and frequency don't need conversion (already V and Hz)
 
         # Metadata
         combined["_timestamp"] = now.isoformat()
