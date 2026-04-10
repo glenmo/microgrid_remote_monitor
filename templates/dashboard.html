@@ -299,6 +299,20 @@
             gap: 16px;
         }
 
+        /* Message box */
+        .message-box {
+            background: var(--card-bg);
+            border: 1px solid #06b6d4;
+            border-radius: 10px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-muted);
+            white-space: pre-wrap;
+        }
+        .message-box:empty { display: none; }
+
         /* Responsive */
         @media (max-width: 900px) {
             .top-row { grid-template-columns: 1fr; }
@@ -387,6 +401,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Info message (editable via message.txt) -->
+    <div class="message-box" id="messageBox"></div>
 
     <!-- Charts -->
     <div class="charts-row">
@@ -936,6 +953,17 @@ function updateEastronCharts(h) {
 }
 
 // =========================================================================
+// Message box
+// =========================================================================
+async function fetchMessage() {
+    try {
+        const res = await fetch('/api/message');
+        const data = await res.json();
+        document.getElementById('messageBox').textContent = data.message || '';
+    } catch (e) { /* ignore */ }
+}
+
+// =========================================================================
 // Polling loops
 // =========================================================================
 fetchData();
@@ -943,12 +971,14 @@ fetchHistory();
 fetchStatus();
 fetchEastronData();
 fetchEastronHistory();
+fetchMessage();
 
 setInterval(fetchData, POLL_MS);
 setInterval(fetchHistory, 60000);
 setInterval(fetchStatus, 30000);
 setInterval(fetchEastronData, POLL_MS);
 setInterval(fetchEastronHistory, 60000);
+setInterval(fetchMessage, 300000);
 </script>
 </body>
 </html>

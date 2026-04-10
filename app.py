@@ -17,6 +17,7 @@ Usage:
 import argparse
 import json
 import logging
+import os
 import struct
 import threading
 import time
@@ -475,6 +476,24 @@ def api_eastron_status():
     if eastron is None:
         return jsonify({"error": "Eastron reader not initialised"}), 503
     return jsonify(eastron.get_status())
+
+
+# ---------------------------------------------------------------------------
+# Editable message (read from message.txt in the app directory)
+# ---------------------------------------------------------------------------
+MESSAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "message.txt")
+
+
+@app.route("/api/message")
+def api_message():
+    """Return the current dashboard message from the text file."""
+    try:
+        if os.path.exists(MESSAGE_FILE):
+            with open(MESSAGE_FILE, "r") as f:
+                return jsonify({"message": f.read().strip()})
+    except Exception as e:
+        log.warning(f"Error reading message file: {e}")
+    return jsonify({"message": ""})
 
 
 # ---------------------------------------------------------------------------
