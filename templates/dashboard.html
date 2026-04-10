@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Microgrid Remote Monitor — Solis + Eastron + SP Pro (SwitchDin)</title>
+    <title>Microgrid Remote Monitor — Solis + SP Pro (SwitchDin)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
         :root {
@@ -328,7 +328,8 @@
     <h1><span>&#9883;</span> Microgrid Remote Monitor</h1>
     <div class="header-status">
         <span id="conn-status"><span class="status-dot warn"></span>Connecting...</span>
-        <span id="eastron-conn" style="margin-left:8px;"><span class="status-dot warn"></span>Meter...</span>
+        <!-- Eastron meter hidden (disconnected) -->
+        <span id="eastron-conn" style="display:none;"></span>
         <span id="sppro-conn" style="margin-left:8px;"><span class="status-dot warn"></span>SP Pro...</span>
         <span id="last-update">--</span>
     </div>
@@ -467,14 +468,14 @@
         </div>
     </div>
 
-    <!-- === EASTRON ENERGY METER SECTION === -->
-    <div class="section-divider" style="margin-top:12px;">
+    <!-- === EASTRON ENERGY METER SECTION (hidden — equipment disconnected) === -->
+    <div class="section-divider" style="margin-top:12px; display:none;">
         <span class="device-tag tag-eastron">Eastron SDM630MCT</span>
         <hr>
     </div>
 
-    <!-- Meter key metrics -->
-    <div class="meter-summary">
+    <!-- Meter key metrics (hidden — equipment disconnected) -->
+    <div class="meter-summary" style="display:none;">
         <div class="metric">
             <div class="metric-icon" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan);">&#9889;</div>
             <div class="metric-label">Total Power</div>
@@ -513,8 +514,8 @@
         </div>
     </div>
 
-    <!-- Meter phase details + charts -->
-    <div class="charts-row">
+    <!-- Meter phase details + charts (hidden — equipment disconnected) -->
+    <div class="charts-row" style="display:none;">
         <div class="card">
             <div class="card-title">Meter — Phase Details</div>
             <table class="pv-table">
@@ -1239,8 +1240,9 @@ async function fetchMessage() {
 fetchData();
 fetchHistory();
 fetchStatus();
-fetchEastronData();
-fetchEastronHistory();
+// Eastron disabled (equipment disconnected)
+// fetchEastronData();
+// fetchEastronHistory();
 fetchSpProData();
 fetchSpProHistory();
 fetchMessage();
@@ -1248,8 +1250,8 @@ fetchMessage();
 setInterval(fetchData, POLL_MS);
 setInterval(fetchHistory, 60000);
 setInterval(fetchStatus, 30000);
-setInterval(fetchEastronData, POLL_MS);
-setInterval(fetchEastronHistory, 60000);
+// setInterval(fetchEastronData, POLL_MS);
+// setInterval(fetchEastronHistory, 60000);
 setInterval(fetchSpProData, 60000);      // SwitchDin updates every ~60s
 setInterval(fetchSpProHistory, 60000);
 setInterval(fetchMessage, 300000);
