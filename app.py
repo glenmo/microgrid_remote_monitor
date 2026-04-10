@@ -149,14 +149,19 @@ BMS_STATUS = {
 class SolisModbusReader:
     """Periodically reads registers from the Solis inverter via Modbus TCP."""
 
-    def __init__(self, inverter_ip, inverter_port=502, slave_id=1, poll_interval=5):
+    def __init__(self, inverter_ip, inverter_port=502, slave_id=1, poll_interval=5,
+                 shared_client=None, shared_client_lock=None):
         self.inverter_ip = inverter_ip
         self.inverter_port = inverter_port
         self.slave_id = slave_id
         self.poll_interval = poll_interval
 
-        self.client = None
-        self.connected = False
+        # Shared client support — when multiple devices are on the same gateway,
+        # we share one TCP connection and use a lock to prevent simultaneous access
+        self._shared_client = shared_client
+        self._shared_client_lock = shared_client_lock
+        self.client = shared_client
+        self.connected = shared_client is not None
         self.last_read_time = None
         self.read_errors = 0
         self.total_reads = 0
@@ -187,7 +192,13 @@ class SolisModbusReader:
         self._thread = None
 
     def connect(self):
-        """Establish Modbus TCP connection."""
+        """Establish Modbus TCP connection (skipped if using shared client)."""
+        if self._shared_client is not None:
+            self.client = self._shared_client
+            self.connected = self.client.is_socket_open() if hasattr(self.client, 'is_socket_open') else True
+            if self.connected:
+                log.info(f"Solis: Using shared connection to {self.inverter_ip}:{self.inverter_port}")
+            return
         try:
             self.client = ModbusTcpClient(
                 host=self.inverter_ip,
@@ -204,7 +215,9 @@ class SolisModbusReader:
             self.connected = False
 
     def disconnect(self):
-        """Close the Modbus connection."""
+        """Close the Modbus connection (skipped if using shared client)."""
+        if self._shared_client is not None:
+            return  # Don't close shared connection
         if self.client:
             self.client.close()
             self.connected = False
@@ -279,19 +292,30 @@ class SolisModbusReader:
         # The Solis spec recommends max 50 registers per frame with >300ms gap
         sorted_regs = sorted(REGISTER_MAP, key=lambda r: r[0])
 
-        # Read register by register (or small groups for U32/S32)
-        for reg_addr, reg_count, name, dtype, unit, scale, desc in sorted_regs:
-            registers = self._read_registers_batch(reg_addr, reg_count)
-            if registers is not None and len(registers) == reg_count:
-                value = self._decode_value(registers, 0, reg_count, dtype, scale)
-                if value is not None:
-                    new_data[name] = value
-                    new_raw[name] = registers[0] if reg_count == 1 else list(registers)
-            else:
-                success = False
+        # Acquire the shared client lock if we're sharing a connection.
+        # This prevents the Eastron reader from using the TCP socket at the
+        # same time (RS485 is half-duplex — only one device talks at a time).
+        bus_lock = self._shared_client_lock
+        if bus_lock:
+            bus_lock.acquire()
 
-            # Small delay between reads (Solis needs >300ms between frames)
-            time.sleep(0.05)
+        try:
+            # Read register by register (or small groups for U32/S32)
+            for reg_addr, reg_count, name, dtype, unit, scale, desc in sorted_regs:
+                registers = self._read_registers_batch(reg_addr, reg_count)
+                if registers is not None and len(registers) == reg_count:
+                    value = self._decode_value(registers, 0, reg_count, dtype, scale)
+                    if value is not None:
+                        new_data[name] = value
+                        new_raw[name] = registers[0] if reg_count == 1 else list(registers)
+                else:
+                    success = False
+
+                # Small delay between reads (Solis needs >300ms between frames)
+                time.sleep(0.05)
+        finally:
+            if bus_lock:
+                bus_lock.release()
 
         if not new_data:
             self.read_errors += 1
@@ -514,6 +538,28 @@ def main():
     eastron_ip = args.gateway_ip or args.eastron_ip
     eastron_port = args.gateway_port or args.eastron_port
 
+    # If both devices share the same IP:port, create a single shared Modbus TCP
+    # connection.  RS485 is half-duplex so only one reader can use it at a time;
+    # the bus_lock ensures this.
+    shared_client = None
+    bus_lock = None
+    both_enabled = not args.no_solis and not args.no_eastron
+    same_gateway = (solis_ip == eastron_ip and solis_port == eastron_port)
+
+    if both_enabled and same_gateway:
+        log.info(f"Both devices on same gateway {solis_ip}:{solis_port} — sharing connection")
+        shared_client = ModbusTcpClient(
+            host=solis_ip,
+            port=solis_port,
+            timeout=10,
+        )
+        if not shared_client.connect():
+            log.error(f"Failed to connect to shared gateway {solis_ip}:{solis_port}")
+            shared_client = None
+        else:
+            log.info(f"Shared Modbus TCP connection established")
+        bus_lock = threading.Lock()
+
     # Start Solis reader
     if not args.no_solis:
         reader = SolisModbusReader(
@@ -521,6 +567,8 @@ def main():
             inverter_port=solis_port,
             slave_id=solis_id,
             poll_interval=solis_poll,
+            shared_client=shared_client,
+            shared_client_lock=bus_lock,
         )
         reader.start()
 
@@ -531,6 +579,8 @@ def main():
             gateway_port=eastron_port,
             slave_id=args.eastron_id,
             poll_interval=args.eastron_poll,
+            shared_client=shared_client,
+            shared_client_lock=bus_lock,
         )
         eastron.start()
 
@@ -544,6 +594,9 @@ def main():
             reader.stop()
         if eastron:
             eastron.stop()
+        if shared_client:
+            shared_client.close()
+            log.info("Shared Modbus connection closed")
 
 
 if __name__ == "__main__":

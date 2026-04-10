@@ -130,14 +130,18 @@ def _decode_ieee754_float(registers):
 class EastronModbusReader:
     """Periodically reads registers from the Eastron SDM630MCT via Modbus TCP."""
 
-    def __init__(self, gateway_ip, gateway_port=502, slave_id=2, poll_interval=5):
+    def __init__(self, gateway_ip, gateway_port=502, slave_id=2, poll_interval=5,
+                 shared_client=None, shared_client_lock=None):
         self.gateway_ip = gateway_ip
         self.gateway_port = gateway_port
         self.slave_id = slave_id
         self.poll_interval = poll_interval
 
-        self.client = None
-        self.connected = False
+        # Shared client support — share one TCP connection with other readers
+        self._shared_client = shared_client
+        self._shared_client_lock = shared_client_lock
+        self.client = shared_client
+        self.connected = shared_client is not None
         self.last_read_time = None
         self.read_errors = 0
         self.total_reads = 0
@@ -162,7 +166,13 @@ class EastronModbusReader:
         self._thread = None
 
     def connect(self):
-        """Establish Modbus TCP connection."""
+        """Establish Modbus TCP connection (skipped if using shared client)."""
+        if self._shared_client is not None:
+            self.client = self._shared_client
+            self.connected = self.client.is_socket_open() if hasattr(self.client, 'is_socket_open') else True
+            if self.connected:
+                log.info(f"Eastron: Using shared connection to {self.gateway_ip}:{self.gateway_port}")
+            return
         try:
             self.client = ModbusTcpClient(
                 host=self.gateway_ip,
@@ -179,7 +189,9 @@ class EastronModbusReader:
             self.connected = False
 
     def disconnect(self):
-        """Close the Modbus connection."""
+        """Close the Modbus connection (skipped if using shared client)."""
+        if self._shared_client is not None:
+            return  # Don't close shared connection
         if self.client:
             self.client.close()
             self.connected = False
@@ -211,14 +223,24 @@ class EastronModbusReader:
         new_data = {}
         success = True
 
-        for reg_addr, name, unit, desc in EASTRON_REGISTER_MAP:
-            value = self._read_float_register(reg_addr)
-            if value is not None:
-                new_data[name] = value
-            else:
-                success = False
-            # Small delay between reads
-            time.sleep(0.02)
+        # Acquire the shared client lock if sharing a connection.
+        # RS485 is half-duplex — only one device can be queried at a time.
+        bus_lock = self._shared_client_lock
+        if bus_lock:
+            bus_lock.acquire()
+
+        try:
+            for reg_addr, name, unit, desc in EASTRON_REGISTER_MAP:
+                value = self._read_float_register(reg_addr)
+                if value is not None:
+                    new_data[name] = value
+                else:
+                    success = False
+                # Small delay between reads
+                time.sleep(0.02)
+        finally:
+            if bus_lock:
+                bus_lock.release()
 
         if not new_data:
             self.read_errors += 1
