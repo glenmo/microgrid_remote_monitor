@@ -124,6 +124,24 @@ def api_push():
 
 
 # ---------------------------------------------------------------------------
+# Message file — editable text displayed on the dashboard
+# ---------------------------------------------------------------------------
+MESSAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "message.txt")
+
+
+@app.route("/api/message")
+def api_message():
+    """Return the current dashboard message from the text file."""
+    try:
+        if os.path.exists(MESSAGE_FILE):
+            with open(MESSAGE_FILE, "r") as f:
+                return jsonify({"message": f.read().strip()})
+    except Exception as e:
+        log.warning(f"Error reading message file: {e}")
+    return jsonify({"message": ""})
+
+
+# ---------------------------------------------------------------------------
 # Public API endpoints
 # ---------------------------------------------------------------------------
 @app.route("/api/data")

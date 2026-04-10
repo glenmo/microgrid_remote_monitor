@@ -132,6 +132,15 @@
         .fault-badge { background: #7f1d1d; color: #fca5a5; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
 
         /* Offline banner */
+        /* Message box */
+        .message-box {
+            background: var(--bg-card); border: 1px solid var(--accent-cyan);
+            border-radius: 10px; padding: 1rem 1.5rem; margin-bottom: 1.5rem;
+            font-size: 0.85rem; line-height: 1.6; color: var(--text-secondary);
+            white-space: pre-wrap;
+        }
+        .message-box:empty { display: none; }
+
         .offline-banner {
             display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--accent-red);
             border-radius: 8px; padding: 0.8rem 1.2rem; margin-bottom: 1rem;
@@ -215,6 +224,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Info message (editable via server/message.txt) -->
+    <div class="message-box" id="messageBox"></div>
 
     <!-- Charts row -->
     <div class="charts-row">
@@ -579,10 +591,20 @@ async function fetchHistory() {
     } catch (err) { console.error('History fetch error:', err); }
 }
 
-// Poll every 15s (data arrives from Pi every 60s)
-fetchData(); fetchHistory();
+// Fetch editable message from server
+async function fetchMessage() {
+    try {
+        const res = await fetch('/api/message');
+        const data = await res.json();
+        document.getElementById('messageBox').textContent = data.message || '';
+    } catch (e) { /* ignore */ }
+}
+
+// Poll every 15s (data arrives from Pi every 60s), message every 5 min
+fetchData(); fetchHistory(); fetchMessage();
 setInterval(fetchData, 15000);
 setInterval(fetchHistory, 60000);
+setInterval(fetchMessage, 300000);
 </script>
 </body>
 </html>

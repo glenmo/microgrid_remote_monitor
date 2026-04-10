@@ -1,0 +1,3 @@
+Battery SoC: Green (>60%) = healthy, Yellow (40-60%) = moderate, Orange (20-40%) = low, Red (<20%) = critical.
+PV Power: Total solar generation from all 4 strings. Grid Power: Positive = exporting, Negative = importing.
+Battery Power: Shows charge/discharge rate. BMS status should read "Normal" during operation.
