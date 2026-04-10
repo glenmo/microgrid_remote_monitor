@@ -373,7 +373,7 @@ function fetchSolisData() {
     fetch('/api/data')
         .then(r => r.json())
         .then(d => {
-            if (!d || !d.battery_soc) { document.getElementById('solisDot').className = 'status-dot stale'; return; }
+            if (!d || Object.keys(d).length < 2) { document.getElementById('solisDot').className = 'status-dot stale'; return; }
             document.getElementById('solisDot').className = 'status-dot ok';
             const soc = d.battery_soc;
             document.getElementById('solisSocVal').textContent = fmt(soc, 0);
@@ -416,7 +416,7 @@ function fetchSpProData() {
     fetch('/api/sppro/data')
         .then(r => r.json())
         .then(d => {
-            if (!d || !d.battery_soc) { document.getElementById('spproDot').className = 'status-dot stale'; return; }
+            if (!d || Object.keys(d).length < 2) { document.getElementById('spproDot').className = 'status-dot stale'; return; }
             document.getElementById('spproDot').className = 'status-dot ok';
             const soc = d.battery_soc;
             document.getElementById('spproSocVal').textContent = fmt(soc, 0);
