@@ -482,8 +482,8 @@ def main():
                         help="Disable the Solis inverter reader")
 
     # Eastron energy meter — via Modbus TCP gateway
-    parser.add_argument("--eastron-ip", default="192.168.1.100",
-                        help="Eastron meter Modbus TCP gateway IP (default: 192.168.1.100)")
+    parser.add_argument("--eastron-ip", default="192.168.11.214",
+                        help="Eastron meter Modbus TCP gateway IP (default: 192.168.11.214)")
     parser.add_argument("--eastron-port", type=int, default=502,
                         help="Eastron meter Modbus TCP port (default: 502)")
     parser.add_argument("--eastron-id", type=int, default=2,

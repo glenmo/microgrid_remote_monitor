@@ -42,8 +42,7 @@ sudo tee "$SERVICE_FILE" > /dev/null <<SERVICEEOF
 [Unit]
 Description=Microgrid Data Pusher (Pi → Server)
 After=network-online.target solis-monitor.service
-Wants=network-online.target
-Requires=solis-monitor.service
+Wants=network-online.target solis-monitor.service
 
 [Service]
 Type=simple

@@ -53,7 +53,7 @@ python app.py --help
   --solis-port        Solis Modbus TCP port      (default: 502)
   --solis-id          Solis inverter slave ID    (default: 1)
   --solis-poll        Solis poll interval (sec)  (default: 5)
-  --eastron-ip        Eastron meter gateway IP   (default: 192.168.1.100)
+  --eastron-ip        Eastron meter gateway IP   (default: 192.168.11.214)
   --eastron-port      Eastron Modbus TCP port    (default: 502)
   --eastron-id        Eastron meter slave ID     (default: 2)
   --eastron-poll      Eastron poll interval (sec)(default: 5)
