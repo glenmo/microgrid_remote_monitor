@@ -94,10 +94,9 @@ def api_push():
             hist_entry = {
                 "timestamp": now,
                 "soc": latest_solis.get("battery_soc", 0),
-                "pv_power": latest_solis.get("total_pv_power", 0),
+                "pv_power": latest_solis.get("pv_total_power", 0),
                 "battery_power": latest_solis.get("battery_power", 0),
-                "grid_power": latest_solis.get("total_active_power", 0),
-                "load_power": latest_solis.get("house_load_power", 0),
+                "grid_power": latest_solis.get("active_power", 0),
             }
             solis_history.append(hist_entry)
 
