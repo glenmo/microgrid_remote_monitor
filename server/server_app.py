@@ -51,8 +51,10 @@ data_lock = threading.Lock()
 
 latest_solis = {}
 latest_eastron = {}
+latest_sppro = {}
 solis_history = deque(maxlen=MAX_HISTORY)
 eastron_history = deque(maxlen=MAX_HISTORY)
+sppro_history = deque(maxlen=MAX_HISTORY)
 last_push_time = None
 push_count = 0
 
@@ -78,7 +80,7 @@ def require_api_key(f):
 @require_api_key
 def api_push():
     """Receive data from the Raspberry Pi."""
-    global latest_solis, latest_eastron, last_push_time, push_count
+    global latest_solis, latest_eastron, latest_sppro, last_push_time, push_count
 
     payload = request.get_json(silent=True)
     if not payload:
@@ -114,11 +116,26 @@ def api_push():
             }
             eastron_history.append(hist_entry)
 
+        if "sppro" in payload:
+            latest_sppro = payload["sppro"]
+            latest_sppro["_received_at"] = now
+            # Add to history
+            hist_entry = {
+                "timestamp": now,
+                "soc": latest_sppro.get("battery_soc", 0),
+                "pv_power": latest_sppro.get("pv_power", 0),
+                "load_power": latest_sppro.get("load_power", 0),
+                "grid_power": latest_sppro.get("grid_power", 0),
+                "battery_power": latest_sppro.get("battery_power", 0),
+            }
+            sppro_history.append(hist_entry)
+
         last_push_time = now
         push_count += 1
 
     log.info(f"Push #{push_count} received — solis: {'yes' if 'solis' in payload else 'no'}, "
-             f"eastron: {'yes' if 'eastron' in payload else 'no'}")
+             f"eastron: {'yes' if 'eastron' in payload else 'no'}, "
+             f"sppro: {'yes' if 'sppro' in payload else 'no'}")
 
     return jsonify({"status": "ok", "received_at": now, "push_count": push_count})
 
@@ -168,6 +185,18 @@ def api_eastron_history():
         return jsonify(list(eastron_history))
 
 
+@app.route("/api/sppro/data")
+def api_sppro_data():
+    with data_lock:
+        return jsonify(latest_sppro)
+
+
+@app.route("/api/sppro/history")
+def api_sppro_history():
+    with data_lock:
+        return jsonify(list(sppro_history))
+
+
 @app.route("/api/status")
 def api_status():
     with data_lock:
@@ -176,17 +205,24 @@ def api_status():
             "push_count": push_count,
             "solis_connected": bool(latest_solis),
             "eastron_connected": bool(latest_eastron),
+            "sppro_connected": bool(latest_sppro),
             "solis_history_points": len(solis_history),
             "eastron_history_points": len(eastron_history),
+            "sppro_history_points": len(sppro_history),
         })
 
 
 # ---------------------------------------------------------------------------
-# Dashboard
+# Dashboards
 # ---------------------------------------------------------------------------
 @app.route("/")
 def dashboard():
     return render_template("server_dashboard.html")
+
+
+@app.route("/combined/")
+def combined_dashboard():
+    return render_template("server_combined_dashboard.html")
 
 
 # ---------------------------------------------------------------------------

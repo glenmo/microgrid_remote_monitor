@@ -76,7 +76,9 @@ def main():
     parser.add_argument("--api-key", default=None,
                         help="API key for server (or set MONITOR_API_KEY env var)")
     parser.add_argument("--local-url", default="http://127.0.0.1:5000",
-                        help="Local Flask API URL (default: http://127.0.0.1:5000)")
+                        help="Local Flask API URL for Solis (default: http://127.0.0.1:5000)")
+    parser.add_argument("--sppro-url", default="http://127.0.0.1:5001",
+                        help="Local Flask API URL for SP Pro/SwitchDin (default: http://127.0.0.1:5001)")
     parser.add_argument("--interval", type=int, default=60,
                         help="Push interval in seconds (default: 60)")
 
@@ -89,9 +91,11 @@ def main():
 
     server_url = args.server_url.rstrip("/")
     local_url = args.local_url.rstrip("/")
+    sppro_url = args.sppro_url.rstrip("/")
 
     log.info(f"Data pusher started")
-    log.info(f"  Local API: {local_url}")
+    log.info(f"  Solis API:   {local_url}")
+    log.info(f"  SP Pro API:  {sppro_url}")
     log.info(f"  Remote server: {server_url}")
     log.info(f"  Push interval: {args.interval}s")
 
@@ -108,6 +112,10 @@ def main():
         eastron_data = fetch_local(f"{local_url}/api/eastron/data")
         if eastron_data:
             payload["eastron"] = eastron_data
+
+        sppro_data = fetch_local(f"{sppro_url}/api/switchdin/data")
+        if sppro_data:
+            payload["sppro"] = sppro_data
 
         if payload:
             success = push_to_server(server_url, api_key, payload)

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moora Moora Microgrid — Combined Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-orange: #f97316;
+            --accent-red: #ef4444;
+            --accent-purple: #a855f7;
+            --accent-cyan: #06b6d4;
+            --border: #334155;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 1.25rem; font-weight: 600; }
+        .header h1 span { color: var(--accent-blue); }
+        .header-status {
+            display: flex; align-items: center; gap: 16px;
+            font-size: 0.85rem; color: var(--text-secondary);
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            display: inline-block; margin-right: 6px;
+        }
+        .status-dot.ok { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); }
+        .status-dot.err { background: var(--accent-red); box-shadow: 0 0 6px var(--accent-red); }
+        .status-dot.stale { background: var(--accent-yellow); box-shadow: 0 0 6px var(--accent-yellow); }
+
+        .dashboard {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        .column { display: flex; flex-direction: column; gap: 16px; }
+
+        .section-label {
+            display: inline-block;
+            font-size: 0.7rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.1em;
+            padding: 4px 10px; border-radius: 6px; margin-bottom: 4px;
+        }
+        .label-solis { background: rgba(234,179,8,0.2); color: var(--accent-yellow); border: 1px solid rgba(234,179,8,0.4); }
+        .label-sppro { background: rgba(168,85,247,0.2); color: var(--accent-purple); border: 1px solid rgba(168,85,247,0.4); }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .card-title {
+            font-size: 0.8rem; text-transform: uppercase;
+            letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 12px;
+        }
+
+        .soc-card {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+        .soc-gauge { position: relative; width: 200px; height: 200px; }
+        .soc-gauge canvas { width: 100%; height: 100%; }
+        .soc-gauge .soc-text {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); text-align: center;
+        }
+        .soc-gauge .soc-value { font-size: 2.8rem; font-weight: 700; line-height: 1; }
+        .soc-gauge .soc-label { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; }
+        .soc-detail {
+            margin-top: 10px; font-size: 0.85rem;
+            color: var(--text-secondary); text-align: center;
+        }
+        .soc-detail span { color: var(--text-primary); font-weight: 500; }
+
+        .metrics-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+        }
+        .metric {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px; padding: 14px;
+        }
+        .metric-icon {
+            width: 32px; height: 32px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem; margin-bottom: 8px;
+        }
+        .metric-label {
+            font-size: 0.7rem; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .metric-value { font-size: 1.4rem; font-weight: 700; margin-top: 2px; }
+        .metric-unit {
+            font-size: 0.8rem; font-weight: 400;
+            color: var(--text-secondary); margin-left: 3px;
+        }
+        .metric-sub { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; }
+
+        .icon-solar { background: rgba(234,179,8,0.15); color: var(--accent-yellow); }
+        .icon-grid { background: rgba(59,130,246,0.15); color: var(--accent-blue); }
+        .icon-battery { background: rgba(34,197,94,0.15); color: var(--accent-green); }
+        .icon-load { background: rgba(249,115,22,0.15); color: var(--accent-orange); }
+        .icon-freq { background: rgba(6,182,212,0.15); color: var(--accent-cyan); }
+
+        .phase-table { width: 100%; border-collapse: collapse; }
+        .phase-table th, .phase-table td {
+            padding: 6px 10px; text-align: left;
+            border-bottom: 1px solid var(--border); font-size: 0.8rem;
+        }
+        .phase-table th {
+            color: var(--text-muted); font-weight: 500;
+            text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;
+        }
+
+        .chart-container { position: relative; height: 220px; }
+
+        .last-update {
+            text-align: center; padding: 8px;
+            font-size: 0.75rem; color: var(--text-muted);
+        }
+
+        @media (max-width: 900px) {
+            .dashboard { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Moora Moora <span>Microgrid</span></h1>
+    <div class="header-status">
+        <div><span class="status-dot err" id="solisDot"></span> Solis</div>
+        <div><span class="status-dot err" id="spproDot"></span> SP Pro</div>
+        <div id="clockDisplay">--:--:--</div>
+    </div>
+</div>
+
+<div class="dashboard">
+
+    <!-- LEFT COLUMN — Solis -->
+    <div class="column">
+        <span class="section-label label-solis">Solis 50kW Hybrid</span>
+
+        <div class="card soc-card">
+            <div class="card-title">Solis Battery SoC</div>
+            <div class="soc-gauge">
+                <canvas id="solisSocGauge" width="200" height="200"></canvas>
+                <div class="soc-text">
+                    <div class="soc-value" id="solisSocVal">--</div>
+                    <div class="soc-label">%</div>
+                </div>
+            </div>
+            <div class="soc-detail">
+                Battery: <span id="solisBattV">--</span>V | <span id="solisBattA">--</span>A
+                <br>Power: <span id="solisBattW">--</span> W
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric">
+                <div class="metric-icon icon-solar">☀</div>
+                <div class="metric-label">PV Power</div>
+                <div class="metric-value" id="solisPvPower">--<span class="metric-unit">W</span></div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-grid">⚡</div>
+                <div class="metric-label">Grid Power</div>
+                <div class="metric-value" id="solisGridPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">+export / -import</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-battery">🔋</div>
+                <div class="metric-label">Battery Power</div>
+                <div class="metric-value" id="solisBattPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">+charge / -discharge</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-freq">≈</div>
+                <div class="metric-label">Frequency</div>
+                <div class="metric-value" id="solisFreq">--<span class="metric-unit">Hz</span></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">PV String Details</div>
+            <table class="phase-table">
+                <thead><tr><th>String</th><th>Voltage (V)</th><th>Current (A)</th><th>Power (W)</th></tr></thead>
+                <tbody>
+                    <tr><td>PV1</td><td id="solisPv1V">--</td><td id="solisPv1A">--</td><td id="solisPv1W">--</td></tr>
+                    <tr><td>PV2</td><td id="solisPv2V">--</td><td id="solisPv2A">--</td><td id="solisPv2W">--</td></tr>
+                    <tr><td>PV3</td><td id="solisPv3V">--</td><td id="solisPv3A">--</td><td id="solisPv3W">--</td></tr>
+                    <tr><td>PV4</td><td id="solisPv4V">--</td><td id="solisPv4A">--</td><td id="solisPv4W">--</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Solis — Power History</div>
+            <div class="chart-container">
+                <canvas id="solisChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN — SP Pro -->
+    <div class="column">
+        <span class="section-label label-sppro">Selectronic SP Pro</span>
+
+        <div class="card soc-card">
+            <div class="card-title">SP Pro Battery SoC</div>
+            <div class="soc-gauge">
+                <canvas id="spproSocGauge" width="200" height="200"></canvas>
+                <div class="soc-text">
+                    <div class="soc-value" id="spproSocVal">--</div>
+                    <div class="soc-label">%</div>
+                </div>
+            </div>
+            <div class="soc-detail">
+                Frequency: <span id="spproFreqDetail">--</span> Hz
+                <br>Grid Meter: <span id="spproGridMeter">--</span> W
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric">
+                <div class="metric-icon icon-solar">☀</div>
+                <div class="metric-label">PV Power</div>
+                <div class="metric-value" id="spproPvPower">--<span class="metric-unit">W</span></div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-grid">⚡</div>
+                <div class="metric-label">Grid Power</div>
+                <div class="metric-value" id="spproGridPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">+export / -import</div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-load">➡</div>
+                <div class="metric-label">Load Power</div>
+                <div class="metric-value" id="spproLoadPower">--<span class="metric-unit">W</span></div>
+            </div>
+            <div class="metric">
+                <div class="metric-icon icon-battery">🔋</div>
+                <div class="metric-label">Battery Power</div>
+                <div class="metric-value" id="spproBattPower">--<span class="metric-unit">W</span></div>
+                <div class="metric-sub">+charge / -discharge</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Phase Details (SmartRail Meter)</div>
+            <table class="phase-table">
+                <thead><tr><th>Phase</th><th>Voltage (V)</th><th>Current (A)</th><th>Power (W)</th><th>PF</th></tr></thead>
+                <tbody>
+                    <tr><td>L1</td><td id="spL1v">--</td><td id="spL1a">--</td><td id="spL1w">--</td><td id="spL1pf">--</td></tr>
+                    <tr><td>L2</td><td id="spL2v">--</td><td id="spL2a">--</td><td id="spL2w">--</td><td id="spL2pf">--</td></tr>
+                    <tr><td>L3</td><td id="spL3v">--</td><td id="spL3a">--</td><td id="spL3w">--</td><td id="spL3pf">--</td></tr>
+                    <tr style="font-weight:600;"><td>Total</td><td>—</td><td>—</td><td id="spTotalW">--</td><td>—</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="card-title">SP Pro — Power History</div>
+            <div class="chart-container">
+                <canvas id="spproChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="last-update">Last push from site: <span id="lastPush">--</span></div>
+
+<script>
+function fmt(v, dp) {
+    if (v === undefined || v === null || v === '' || isNaN(v)) return '--';
+    return Number(v).toFixed(dp);
+}
+
+// SoC Gauge
+function getSocColor(soc) {
+    if (soc >= 70) return '#22c55e';
+    if (soc >= 40) return '#eab308';
+    if (soc >= 20) return '#f97316';
+    return '#ef4444';
+}
+
+function drawSocGauge(canvas, soc) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const cx = w/2, cy = h/2, r = Math.min(w,h)/2 - 15, lw = 16;
+    const startAngle = 0.75 * Math.PI, endAngle = 2.25 * Math.PI;
+    const totalArc = endAngle - startAngle;
+    ctx.clearRect(0, 0, w, h);
+    ctx.beginPath(); ctx.arc(cx, cy, r, startAngle, endAngle);
+    ctx.strokeStyle = '#334155'; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.stroke();
+    if (soc !== null && !isNaN(soc)) {
+        const pct = Math.max(0, Math.min(100, soc)) / 100;
+        ctx.beginPath(); ctx.arc(cx, cy, r, startAngle, startAngle + totalArc * pct);
+        ctx.strokeStyle = getSocColor(soc); ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.stroke();
+    }
+}
+
+// Charts
+const chartOpts = {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12, font: { size: 11 } } } },
+    scales: {
+        x: { ticks: { color: '#64748b', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: 'rgba(51,65,85,0.5)' } },
+        y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(51,65,85,0.5)' } },
+        y1: { position: 'right', ticks: { color: '#22c55e', font: { size: 10 } }, grid: { drawOnChartArea: false }, min: 0, max: 100 },
+    }
+};
+
+const solisChart = new Chart(document.getElementById('solisChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+        { label: 'PV (W)',      data: [], borderColor: '#eab308', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y' },
+        { label: 'Grid (W)',    data: [], borderColor: '#3b82f6', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y' },
+        { label: 'Battery (W)', data: [], borderColor: '#22c55e', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y' },
+        { label: 'SoC (%)',     data: [], borderColor: '#a855f7', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y1' },
+    ]},
+    options: JSON.parse(JSON.stringify(chartOpts))
+});
+
+const spproChart = new Chart(document.getElementById('spproChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+        { label: 'PV (W)',      data: [], borderColor: '#eab308', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y' },
+        { label: 'Load (W)',    data: [], borderColor: '#f97316', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y' },
+        { label: 'Grid (W)',    data: [], borderColor: '#3b82f6', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y' },
+        { label: 'SoC (%)',     data: [], borderColor: '#22c55e', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y1' },
+    ]},
+    options: JSON.parse(JSON.stringify(chartOpts))
+});
+
+// Clock
+setInterval(() => {
+    document.getElementById('clockDisplay').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+// ---- Solis data ----
+function fetchSolisData() {
+    fetch('/api/data')
+        .then(r => r.json())
+        .then(d => {
+            if (!d || !d.battery_soc) { document.getElementById('solisDot').className = 'status-dot stale'; return; }
+            document.getElementById('solisDot').className = 'status-dot ok';
+            const soc = d.battery_soc;
+            document.getElementById('solisSocVal').textContent = fmt(soc, 0);
+            drawSocGauge(document.getElementById('solisSocGauge'), soc);
+            document.getElementById('solisBattV').textContent = fmt(d.battery_voltage, 1);
+            document.getElementById('solisBattA').textContent = fmt(d.battery_current, 1);
+            document.getElementById('solisBattW').textContent = fmt(d.battery_power, 0);
+            document.getElementById('solisPvPower').innerHTML  = fmt(d.pv_total_power, 0) + '<span class="metric-unit">W</span>';
+            document.getElementById('solisGridPower').innerHTML = fmt(d.active_power, 0) + '<span class="metric-unit">W</span>';
+            document.getElementById('solisBattPower').innerHTML = fmt(d.battery_power, 0) + '<span class="metric-unit">W</span>';
+            document.getElementById('solisFreq').innerHTML      = fmt(d.grid_frequency, 1) + '<span class="metric-unit">Hz</span>';
+            for (let i = 1; i <= 4; i++) {
+                const v = d['pv'+i+'_voltage'], a = d['pv'+i+'_current'];
+                document.getElementById('solisPv'+i+'V').textContent = fmt(v, 1);
+                document.getElementById('solisPv'+i+'A').textContent = fmt(a, 1);
+                document.getElementById('solisPv'+i+'W').textContent = (v && a) ? fmt(v*a, 0) : '--';
+            }
+        })
+        .catch(() => { document.getElementById('solisDot').className = 'status-dot err'; });
+}
+
+function fetchSolisHistory() {
+    fetch('/api/history')
+        .then(r => r.json())
+        .then(arr => {
+            // Server history is array of objects [{timestamp, soc, pv_power, ...}, ...]
+            const labels = arr.map(e => e.timestamp ? e.timestamp.slice(11, 16) : '');
+            solisChart.data.labels = labels;
+            solisChart.data.datasets[0].data = arr.map(e => e.pv_power || 0);
+            solisChart.data.datasets[1].data = arr.map(e => e.grid_power || 0);
+            solisChart.data.datasets[2].data = arr.map(e => e.battery_power || 0);
+            solisChart.data.datasets[3].data = arr.map(e => e.soc || 0);
+            solisChart.update('none');
+        })
+        .catch(() => {});
+}
+
+// ---- SP Pro data ----
+function fetchSpProData() {
+    fetch('/api/sppro/data')
+        .then(r => r.json())
+        .then(d => {
+            if (!d || !d.battery_soc) { document.getElementById('spproDot').className = 'status-dot stale'; return; }
+            document.getElementById('spproDot').className = 'status-dot ok';
+            const soc = d.battery_soc;
+            document.getElementById('spproSocVal').textContent = fmt(soc, 0);
+            drawSocGauge(document.getElementById('spproSocGauge'), soc);
+            document.getElementById('spproFreqDetail').textContent = fmt(d.grid_frequency, 1);
+            document.getElementById('spproGridMeter').textContent  = fmt(d.smartrail_total_power, 0);
+            document.getElementById('spproPvPower').innerHTML   = fmt(d.pv_power, 0) + '<span class="metric-unit">W</span>';
+            document.getElementById('spproGridPower').innerHTML  = fmt(d.grid_power, 0) + '<span class="metric-unit">W</span>';
+            document.getElementById('spproLoadPower').innerHTML  = fmt(d.load_power, 0) + '<span class="metric-unit">W</span>';
+            document.getElementById('spproBattPower').innerHTML  = fmt(d.battery_power, 0) + '<span class="metric-unit">W</span>';
+            const phases = ['l1','l2','l3'];
+            for (const p of phases) {
+                const P = p.toUpperCase();
+                document.getElementById('sp'+P+'v').textContent  = fmt(d[p+'_grid_voltage'], 1);
+                document.getElementById('sp'+P+'a').textContent  = fmt(d[p+'_grid_current'], 1);
+                document.getElementById('sp'+P+'w').textContent  = fmt(d[p+'_grid_power'], 0);
+                document.getElementById('sp'+P+'pf').textContent = fmt(d[p+'_power_factor'], 3);
+            }
+            document.getElementById('spTotalW').textContent = fmt(d.smartrail_total_power, 0);
+        })
+        .catch(() => { document.getElementById('spproDot').className = 'status-dot err'; });
+}
+
+function fetchSpProHistory() {
+    fetch('/api/sppro/history')
+        .then(r => r.json())
+        .then(arr => {
+            const labels = arr.map(e => e.timestamp ? e.timestamp.slice(11, 16) : '');
+            spproChart.data.labels = labels;
+            spproChart.data.datasets[0].data = arr.map(e => e.pv_power || 0);
+            spproChart.data.datasets[1].data = arr.map(e => e.load_power || 0);
+            spproChart.data.datasets[2].data = arr.map(e => e.grid_power || 0);
+            spproChart.data.datasets[3].data = arr.map(e => e.soc || 0);
+            spproChart.update('none');
+        })
+        .catch(() => {});
+}
+
+// ---- Status / last push ----
+function fetchStatus() {
+    fetch('/api/status')
+        .then(r => r.json())
+        .then(s => {
+            document.getElementById('lastPush').textContent = s.last_push || 'never';
+        })
+        .catch(() => {});
+}
+
+// Initial fetch + intervals
+fetchSolisData(); fetchSolisHistory();
+fetchSpProData(); fetchSpProHistory();
+fetchStatus();
+setInterval(fetchSolisData, 30000);    // Solis updates from pusher every ~60s, poll every 30s
+setInterval(fetchSpProData, 30000);
+setInterval(fetchSolisHistory, 120000);
+setInterval(fetchSpProHistory, 120000);
+setInterval(fetchStatus, 60000);
+</script>
+</body>
+</html>
