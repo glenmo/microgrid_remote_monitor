@@ -67,6 +67,21 @@ def push_to_server(server_url, api_key, payload):
     return False
 
 
+
+
+def sd_notify_status(msg: str):
+    """Update systemd's per-unit Status: string. No-op if systemd-notify
+    is unavailable (e.g. running interactively, not under systemd)."""
+    import subprocess
+    try:
+        subprocess.run(
+            ["systemd-notify", f"--status={msg}"],
+            check=False, timeout=2, capture_output=True,
+        )
+    except Exception:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Push microgrid data from Pi to remote server"
@@ -77,8 +92,8 @@ def main():
                         help="API key for server (or set MONITOR_API_KEY env var)")
     parser.add_argument("--local-url", default="http://127.0.0.1:5000",
                         help="Local Flask API URL for Solis (default: http://127.0.0.1:5000)")
-    parser.add_argument("--sppro-url", default="http://127.0.0.1:5001",
-                        help="Local Flask API URL for SP Pro/SwitchDin (default: http://127.0.0.1:5001)")
+    parser.add_argument("--sppro-url", default="http://127.0.0.1:5000",
+                        help="Local Flask API URL for SP Pro (default: http://127.0.0.1:5000)")
     parser.add_argument("--interval", type=int, default=60,
                         help="Push interval in seconds (default: 60)")
 
@@ -94,6 +109,7 @@ def main():
     sppro_url = args.sppro_url.rstrip("/")
 
     log.info(f"Data pusher started")
+    sd_notify_status("Starting up...")
     log.info(f"  Solis API:   {local_url}")
     log.info(f"  SP Pro API:  {sppro_url}")
     log.info(f"  Remote server: {server_url}")
@@ -113,16 +129,33 @@ def main():
         if eastron_data:
             payload["eastron"] = eastron_data
 
-        sppro_data = fetch_local(f"{sppro_url}/api/switchdin/data")
+        sppro_data = fetch_local(f"{sppro_url}/api/sppro/data")
         if sppro_data:
             payload["sppro"] = sppro_data
 
         if payload:
             success = push_to_server(server_url, api_key, payload)
+            from datetime import datetime as _dt
+            now = _dt.now().strftime("%H:%M:%S")
             if success:
                 consecutive_failures = 0
+                # Build a status string showing what we just pushed
+                tags = []
+                if "solis" in payload:
+                    soc = payload["solis"].get("battery_soc")
+                    if soc is not None:
+                        tags.append(f"Solis {soc:.0f}%")
+                if "sppro" in payload:
+                    soc = payload["sppro"].get("battery_soc")
+                    if soc is not None:
+                        tags.append(f"SP Pro {soc:.0f}%")
+                tag_str = ", ".join(tags) if tags else "no soc data"
+                sd_notify_status(f"OK at {now}: {tag_str}")
             else:
                 consecutive_failures += 1
+                sd_notify_status(
+                    f"FAIL at {now} (consecutive: {consecutive_failures})"
+                )
                 if consecutive_failures >= 5:
                     log.warning(f"  {consecutive_failures} consecutive failures")
         else:
