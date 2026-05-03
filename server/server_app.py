@@ -197,6 +197,62 @@ def api_sppro_history():
         return jsonify(list(sppro_history))
 
 
+
+@app.route("/api/solis/data")
+def api_solis_data_alias():
+    return api_solis_data()
+
+
+@app.route("/api/solis/history")
+def api_solis_history_alias():
+    return api_solis_history()
+
+
+@app.route("/api/solis/status")
+def api_solis_status_alias():
+    """Per-inverter status synthesised from push state."""
+    with data_lock:
+        from datetime import datetime as _dt
+        last = last_push_time
+        connected = bool(latest_solis and latest_solis.get("battery_soc") is not None)
+        if connected and last:
+            try:
+                age = (_dt.now() - _dt.strptime(last, "%Y-%m-%d %H:%M:%S")).total_seconds()
+                if age > 300:
+                    connected = False
+            except Exception:
+                pass
+        return jsonify({
+            "connected": connected,
+            "host": "(pushed via mooramoora.org.au)",
+            "inverter_ip": "192.168.11.214",
+            "last_read": last,
+            "total_reads": push_count,
+        })
+
+
+@app.route("/api/sppro/status")
+def api_sppro_status_alias():
+    with data_lock:
+        from datetime import datetime as _dt
+        last = last_push_time
+        connected = bool(latest_sppro and latest_sppro.get("battery_soc") is not None)
+        if connected and last:
+            try:
+                age = (_dt.now() - _dt.strptime(last, "%Y-%m-%d %H:%M:%S")).total_seconds()
+                if age > 300:
+                    connected = False
+            except Exception:
+                pass
+        return jsonify({
+            "connected": connected,
+            "host": "(pushed via mooramoora.org.au)",
+            "inverter_ip": "192.168.11.240",
+            "last_read": last,
+            "total_reads": push_count,
+        })
+
+
 @app.route("/api/status")
 def api_status():
     with data_lock:
@@ -217,6 +273,11 @@ def api_status():
 # ---------------------------------------------------------------------------
 @app.route("/")
 def dashboard():
+    return render_template("combined_v2.html")
+
+
+@app.route("/solis-only")
+def dashboard_solis_only():
     return render_template("server_dashboard.html")
 
 
