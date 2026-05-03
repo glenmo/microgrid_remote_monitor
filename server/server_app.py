@@ -273,7 +273,10 @@ def api_status():
 # ---------------------------------------------------------------------------
 @app.route("/")
 def dashboard():
-    return render_template("combined_v2.html")@app.route("/combined/")
+    return render_template("combined_v2.html")
+
+
+@app.route("/combined/")
 def combined_dashboard():
     return render_template("server_combined_dashboard.html")
 
