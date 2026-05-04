@@ -287,6 +287,25 @@ function setBadge(id, watts, threshold = 50) {
 
 const spproGauge = makeGauge('sppro-socGauge');
 const solisGauge = makeGauge('solis-socGauge');
+const freqChart = new Chart(document.getElementById('freqChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+        { label: 'Microgrid Hz', data: [], borderColor: '#22c55e',
+          backgroundColor:'rgba(34,197,94,0.06)', borderWidth: 2,
+          pointRadius: 0, tension: 0.2, fill: true },
+    ]},
+    options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        scales: {
+            y: { min: 49.5, max: 50.5, ticks: { stepSize: 0.1 },
+                 grid: {color: '#1e293b'},
+                 title: { display: true, text: 'Hz', color: '#94a3b8' } },
+            x: { grid: {color: '#1e293b'} }
+        },
+        plugins: { legend: {labels: {color: '#94a3b8'}} }
+    }
+});
+
 const socChart = new Chart(document.getElementById('socChart').getContext('2d'), {
     type: 'line',
     data: { labels: [], datasets: [
