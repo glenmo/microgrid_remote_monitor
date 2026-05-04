@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Safety net: hard-reload the page every 10 minutes in case JS has frozen.
+     The setInterval polling below should make this unnecessary, but kiosk
+     Chromium on the Pi has a habit of silently throttling or crashing tabs. -->
+<meta http-equiv="refresh" content="600">
 <title>SP Pro + Solis — Mooramoora</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -97,6 +101,7 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         <span id="sppro-conn"><span class="status-dot err" id="sppro-dot"></span>SP Pro...</span>
         <span id="solis-conn"><span class="status-dot err" id="solis-dot"></span>Solis...</span>
         <span id="last-read">Last: —</span>
+        <span id="age-indicator" style="color:var(--text-muted);">(— ago)</span>
     </div>
 </header>
 
@@ -439,27 +444,50 @@ function renderTotals(spp, sppStatus, sol, solStatus) {
     setText('t-pv-today-solis', solOk ? `${fmt(solT, 1)} kWh` : 'offline');
 }
 
+// =========================================================================
+// Polling, with cache-busting + watchdog
+// =========================================================================
+// `lastSuccessAt` is set every time fetchAll() completes successfully.
+// The age indicator (updated every 1 s from the local clock) shows how long
+// it's been — so even if the displayed numbers happen to be steady, you can
+// see at a glance whether the browser is still polling. If no successful
+// fetch has arrived for `WATCHDOG_MS`, we hard-reload the page.
+let lastSuccessAt = null;
+const WATCHDOG_MS = 60000;          // reload if no successful fetch for 60s
+const FETCH_POLL_MS = 5000;
+const HISTORY_POLL_MS = 60000;
+
+// Append a cache-buster so neither the browser nor any proxy can serve a
+// stale JSON response.
+function bust(url) { return url + (url.includes('?') ? '&' : '?') + '_=' + Date.now(); }
+
+function getJSON(url) {
+    return fetch(bust(url), { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)));
+}
+
 async function fetchAll() {
     try {
         const [spp, sppStatus, sol, solStatus] = await Promise.all([
-            fetch('/api/sppro/data').then(r=>r.json()).catch(()=>({})),
-            fetch('/api/sppro/status').then(r=>r.json()).catch(()=>({})),
-            fetch('/api/solis/data').then(r=>r.json()).catch(()=>({})),
-            fetch('/api/solis/status').then(r=>r.json()).catch(()=>({})),
+            getJSON('/api/sppro/data').catch(()=>({})),
+            getJSON('/api/sppro/status').catch(()=>({})),
+            getJSON('/api/solis/data').catch(()=>({})),
+            getJSON('/api/solis/status').catch(()=>({})),
         ]);
         renderSPPro(spp, sppStatus);
         renderSolis(sol, solStatus);
         renderTotals(spp, sppStatus, sol, solStatus);
         const ts = [sppStatus.last_read, solStatus.last_read].filter(Boolean).sort().pop();
         if (ts) setText('last-read', `Last: ${new Date(ts).toLocaleTimeString('en-AU')}`);
-    } catch (e) { console.warn(e); }
+        lastSuccessAt = Date.now();
+    } catch (e) { console.warn('fetchAll:', e); }
 }
 
 async function fetchHistory() {
     try {
         const [sppH, solH] = await Promise.all([
-            fetch('/api/sppro/history').then(r=>r.json()).catch(()=>({})),
-            fetch('/api/solis/history').then(r=>r.json()).catch(()=>({})),
+            getJSON('/api/sppro/history').catch(()=>({})),
+            getJSON('/api/solis/history').catch(()=>({})),
         ]);
         const labels = (sppH.timestamps?.length || 0) >= (solH.timestamps?.length || 0)
             ? (sppH.timestamps || []) : (solH.timestamps || []);
@@ -473,12 +501,37 @@ async function fetchHistory() {
         freqChart.data.labels = labels;
         freqChart.data.datasets[0].data = solH.grid_frequency || [];
         freqChart.update('none');
-    } catch (e) { console.warn(e); }
+    } catch (e) { console.warn('fetchHistory:', e); }
+}
+
+// Client-clock-driven age indicator and watchdog. Runs every 1 s regardless
+// of fetch success, so a frozen page is immediately obvious in the header.
+function tickAge() {
+    const el = document.getElementById('age-indicator');
+    if (!el) return;
+    if (lastSuccessAt === null) {
+        el.textContent = '(— ago)';
+        el.style.color = 'var(--text-muted)';
+        return;
+    }
+    const age = Date.now() - lastSuccessAt;
+    const s = Math.floor(age / 1000);
+    el.textContent = `(${s}s ago)`;
+    if (age > WATCHDOG_MS) {
+        el.style.color = 'var(--accent-red)';
+        console.warn('Watchdog: no successful fetch for', s, 's — reloading');
+        location.reload();
+    } else if (age > 15000) {
+        el.style.color = 'var(--accent-orange)';
+    } else {
+        el.style.color = 'var(--text-muted)';
+    }
 }
 
 fetchAll(); fetchHistory();
-setInterval(fetchAll, 5000);
-setInterval(fetchHistory, 60000);
+setInterval(fetchAll, FETCH_POLL_MS);
+setInterval(fetchHistory, HISTORY_POLL_MS);
+setInterval(tickAge, 1000);
 </script>
 </body>
 </html>

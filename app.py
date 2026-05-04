@@ -50,6 +50,19 @@ log = logging.getLogger("solis_monitor")
 # ---------------------------------------------------------------------------
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
+
+# Make sure neither the browser nor any proxy ever caches a JSON API response.
+# Without this, kiosk Chromium on the Pi has been observed serving stale
+# /api/*/data responses to the dashboard's setInterval polls, making the
+# dashboard appear frozen even though the back-end was polling fine.
+@app.after_request
+def _no_cache_api(resp):
+    if request.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    return resp
+
 # ---------------------------------------------------------------------------
 # Register map — Solis Hybrid Inverter (function code 0x04, input registers)
 # Format: (start_register, count, name, data_type, unit, scale_divisor, description)
