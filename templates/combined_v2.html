@@ -91,6 +91,21 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .total-tile .breakdown { font-size: 10px; color: var(--text-muted); }
 
 .chart-wrap { height: 200px; position: relative; }
+
+/* Stale-value treatment: dim a value so the user sees at a glance that this
+   number is held over from the last successful read. Applied to individual
+   fields when their key is null/undefined in the latest response, and to
+   entire columns (.stale-col) when the device is disconnected. */
+.stale { color: var(--text-muted) !important; opacity: 0.55; }
+.stale-col .soc-card,
+.stale-col .flow-tile,
+.stale-col .energy-table,
+.stale-col .metric-row { opacity: 0.55; }
+
+/* Per-device age indicator next to the device name in the header. */
+.age { font-size: 11px; color: var(--text-muted); margin-left: 4px; }
+.age.warn  { color: var(--accent-orange); }
+.age.fail  { color: var(--accent-red); }
 </style>
 </head>
 <body>
@@ -98,8 +113,8 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 <header>
     <h1><span class="sp">SP PRO</span> + <span class="solis">SOLIS</span> Combined Monitor</h1>
     <div class="header-status">
-        <span id="sppro-conn"><span class="status-dot err" id="sppro-dot"></span>SP Pro...</span>
-        <span id="solis-conn"><span class="status-dot err" id="solis-dot"></span>Solis...</span>
+        <span><span class="status-dot err" id="sppro-dot"></span><span id="sppro-name">SP Pro...</span><span id="sppro-age" class="age"></span></span>
+        <span><span class="status-dot err" id="solis-dot"></span><span id="solis-name">Solis...</span><span id="solis-age" class="age"></span></span>
         <span id="last-read">Last: —</span>
         <span id="age-indicator" style="color:var(--text-muted);">(— ago)</span>
     </div>
@@ -265,6 +280,50 @@ function fmt(v, d=1) {
     return Number(v).toLocaleString('en-AU', {minimumFractionDigits: d, maximumFractionDigits: d});
 }
 function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+
+// Update an element's text content ONLY when `value` is a real present
+// number — null / undefined / NaN means "the back-end didn't give us a value
+// this time", in which case we leave the previously-rendered text in place
+// and add a `.stale` class so it dims. This is what makes the dashboard
+// hold the last good reading instead of flashing to "0" or "—" the instant
+// a transmission drops.
+function setNum(id, value, fmtFn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (value === null || value === undefined || (typeof value === 'number' && Number.isNaN(value))) {
+        el.classList.add('stale');
+        return;  // keep last good text
+    }
+    el.classList.remove('stale');
+    el.textContent = fmtFn ? fmtFn(value) : String(value);
+}
+// Same idea, but for innerHTML (used where the value is followed by a unit
+// span, e.g. `123<small>W</small>`).
+function setHtml(id, value, htmlFn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (value === null || value === undefined || (typeof value === 'number' && Number.isNaN(value))) {
+        el.classList.add('stale');
+        return;
+    }
+    el.classList.remove('stale');
+    el.innerHTML = htmlFn(value);
+}
+// Per-device timestamp of the last successful back-end read.
+const lastReadAt = { sppro: null, solis: null };
+function rememberRead(side, status) {
+    if (status?.last_read) {
+        const t = Date.parse(status.last_read);
+        if (!Number.isNaN(t)) lastReadAt[side] = t;
+    }
+}
+function ageStr(ms) {
+    if (ms == null) return '';
+    const s = Math.floor(ms / 1000);
+    if (s < 60)    return `${s}s ago`;
+    if (s < 3600)  return `${Math.floor(s/60)}m ${s%60}s ago`;
+    return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m ago`;
+}
 function gaugeColor(soc) {
     if (soc < 20) return '#ef4444';
     if (soc < 40) return '#f97316';
@@ -279,6 +338,7 @@ function makeGauge(canvasId) {
     });
 }
 function updateGauge(g, soc) {
+    if (soc === null || soc === undefined || Number.isNaN(soc)) return;  // hold last
     g.data.datasets[0].data = [soc, 100 - soc];
     g.data.datasets[0].backgroundColor = [gaugeColor(soc), '#334155'];
     g.update('none');
@@ -302,7 +362,10 @@ const freqChart = new Chart(document.getElementById('freqChart').getContext('2d'
     options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         scales: {
-            y: { min: 49.5, max: 50.5, ticks: { stepSize: 0.1 },
+            // Off-grid microgrid: SP Pro uses frequency-shift up to ~52 Hz to
+            // curtail Solis when batteries are full. Widened range stops the
+            // peaks from clipping at 50.5.
+            y: { min: 49.5, max: 55, ticks: { stepSize: 0.5 },
                  grid: {color: '#1e293b'},
                  title: { display: true, text: 'Hz', color: '#94a3b8' } },
             x: { grid: {color: '#1e293b'} }
@@ -325,92 +388,123 @@ const socChart = new Chart(document.getElementById('socChart').getContext('2d'),
 });
 
 function renderSPPro(d, status) {
+    rememberRead('sppro', status);
+    const connected = !!status?.connected;
     const dot = document.getElementById('sppro-dot');
-    const conn = document.getElementById('sppro-conn');
-    if (status?.connected) { dot.className = 'status-dot ok'; conn.innerHTML = `<span class="status-dot ok"></span>SP Pro ${status.host}`; }
-    else                   { dot.className = 'status-dot err'; conn.innerHTML = `<span class="status-dot err"></span>SP Pro disconnected`; }
+    if (dot) dot.className = 'status-dot ' + (connected ? 'ok' : 'err');
+    setText('sppro-name', connected ? `SP Pro ${status.host || ''}`.trim() : 'SP Pro disconnected');
 
-    if (!d || d.error) { setText('sppro-mode', 'Not polled by this service'); return; }
+    const col = document.getElementById('col-sppro');
+    if (col) col.classList.toggle('stale-col', !connected);
 
-    const soc = Number(d.battery_soc ?? 0);
+    // When the device is offline we deliberately do NOT clobber the displayed
+    // values; we just dim them via .stale-col above. Skip the field updates.
+    if (!connected || !d || d.error) {
+        if (!connected) setText('sppro-mode', 'Disconnected');
+        else if (d?.error) setText('sppro-mode', 'Not polled by this service');
+        return;
+    }
+
+    const soc = d.battery_soc;
     updateGauge(spproGauge, soc);
-    setText('sppro-soc', `${fmt(soc, 1)}%`);
+    setNum('sppro-soc', soc, v => `${fmt(v, 1)}%`);
 
-    const battW = Number(d.battery_w ?? 0);
-    setBadge('sppro-batt-badge', battW);
-    setText('sppro-batt-watts', `${fmt(Math.abs(battW), 0)} W`);
-    let mode = 'Idle';
-    if (battW > 50) mode = 'Charging';
-    else if (battW < -50) mode = 'Discharging';
-    setText('sppro-mode', mode);
+    const battW = d.battery_w;
+    if (battW != null) {
+        setBadge('sppro-batt-badge', battW);
+        setNum('sppro-batt-watts', battW, v => `${fmt(Math.abs(v), 0)} W`);
+        let mode = 'Idle';
+        if (battW > 50) mode = 'Charging';
+        else if (battW < -50) mode = 'Discharging';
+        setText('sppro-mode', mode);
+    }
 
-    // Solar = shunt_w (DC PV via shunt) + solarinverter_w (AC-coupled solar)
-    const pvW = Number(d.shunt_w ?? 0) + Number(d.solarinverter_w ?? 0);
-    setText('sppro-pv', fmt(pvW, 0));
-    // selpi labels these *_wh but values are kWh per its own comment
-    setText('sppro-pv-today', `${fmt(d.solar_wh_today, 1)} kWh`);
+    // Solar = shunt_w (DC PV via shunt) + solarinverter_w (AC-coupled solar).
+    // Only update if at least one component is present; otherwise hold last.
+    if (d.shunt_w != null || d.solarinverter_w != null) {
+        const pvW = Number(d.shunt_w ?? 0) + Number(d.solarinverter_w ?? 0);
+        setNum('sppro-pv', pvW, v => fmt(v, 0));
+    }
+    setNum('sppro-pv-today', d.solar_wh_today, v => `${fmt(v, 1)} kWh`);
 
-    const gridW = Number(d.grid_w ?? 0);
-    setText('sppro-grid', fmt(Math.abs(gridW), 0));
-    setText('sppro-grid-dir', gridW > 50 ? 'Importing' : (gridW < -50 ? 'Exporting' : 'Idle'));
+    const gridW = d.grid_w;
+    setNum('sppro-grid', gridW, v => fmt(Math.abs(v), 0));
+    if (gridW != null) {
+        setText('sppro-grid-dir', gridW > 50 ? 'Importing' : (gridW < -50 ? 'Exporting' : 'Idle'));
+    }
 
-    setText('sppro-batt', fmt(Math.abs(battW), 0));
-    setText('sppro-batt-dir', battW > 50 ? 'Charging' : (battW < -50 ? 'Discharging' : 'Idle'));
+    setNum('sppro-batt', battW, v => fmt(Math.abs(v), 0));
+    if (battW != null) {
+        setText('sppro-batt-dir', battW > 50 ? 'Charging' : (battW < -50 ? 'Discharging' : 'Idle'));
+    }
 
-    const loadW = Number(d.load_w ?? 0);
-    setText('sppro-load', fmt(loadW, 0));
-    setText('sppro-load-today', `${fmt(d.load_wh_today, 1)} kWh`);
+    setNum('sppro-load', d.load_w, v => fmt(v, 0));
+    setNum('sppro-load-today', d.load_wh_today, v => `${fmt(v, 1)} kWh`);
 
-    setText('sppro-e-pv-today',   fmt(d.solar_wh_today, 1));
-    setText('sppro-e-pv-total',   fmt(d.solar_wh_total, 0));
-    setText('sppro-e-imp-today',  fmt(d.grid_in_wh_today, 1));
-    setText('sppro-e-imp-total',  fmt(d.grid_in_wh_total, 0));
-    setText('sppro-e-exp-today',  fmt(d.grid_out_wh_today, 1));
-    setText('sppro-e-exp-total',  fmt(d.grid_out_wh_total, 0));
-    setText('sppro-e-bin-today',  fmt(d.battery_in_wh_today, 1));
-    setText('sppro-e-bin-total',  fmt(d.battery_in_wh_total, 0));
-    setText('sppro-e-bout-today', fmt(d.battery_out_wh_today, 1));
-    setText('sppro-e-bout-total', fmt(d.battery_out_wh_total, 0));
-    setText('sppro-e-load-today', fmt(d.load_wh_today, 1));
-    setText('sppro-e-load-total', fmt(d.load_wh_total, 0));
+    setNum('sppro-e-pv-today',   d.solar_wh_today,       v => fmt(v, 1));
+    setNum('sppro-e-pv-total',   d.solar_wh_total,       v => fmt(v, 0));
+    setNum('sppro-e-imp-today',  d.grid_in_wh_today,     v => fmt(v, 1));
+    setNum('sppro-e-imp-total',  d.grid_in_wh_total,     v => fmt(v, 0));
+    setNum('sppro-e-exp-today',  d.grid_out_wh_today,    v => fmt(v, 1));
+    setNum('sppro-e-exp-total',  d.grid_out_wh_total,    v => fmt(v, 0));
+    setNum('sppro-e-bin-today',  d.battery_in_wh_today,  v => fmt(v, 1));
+    setNum('sppro-e-bin-total',  d.battery_in_wh_total,  v => fmt(v, 0));
+    setNum('sppro-e-bout-today', d.battery_out_wh_today, v => fmt(v, 1));
+    setNum('sppro-e-bout-total', d.battery_out_wh_total, v => fmt(v, 0));
+    setNum('sppro-e-load-today', d.load_wh_today,        v => fmt(v, 1));
+    setNum('sppro-e-load-total', d.load_wh_total,        v => fmt(v, 0));
 }
 
 function renderSolis(d, status) {
+    rememberRead('solis', status);
+    const connected = !!status?.connected;
     const dot = document.getElementById('solis-dot');
-    const conn = document.getElementById('solis-conn');
-    if (status?.connected) { dot.className = 'status-dot ok'; conn.innerHTML = `<span class="status-dot ok"></span>Solis ${status.inverter_ip || status.host}`; }
-    else                   { dot.className = 'status-dot err'; conn.innerHTML = `<span class="status-dot err"></span>Solis disconnected`; }
+    if (dot) dot.className = 'status-dot ' + (connected ? 'ok' : 'err');
+    setText('solis-name', connected ? `Solis ${status.inverter_ip || status.host || ''}`.trim() : 'Solis disconnected');
 
-    if (!d || d.error) { setText('solis-mode', 'Not available'); return; }
+    const col = document.getElementById('col-solis');
+    if (col) col.classList.toggle('stale-col', !connected);
 
-    const soc = Number(d.battery_soc ?? 0);
+    if (!connected || !d || d.error) {
+        if (!connected) setText('solis-mode', 'Disconnected');
+        else if (d?.error) setText('solis-mode', 'Not available');
+        return;
+    }
+
+    const soc = d.battery_soc;
     updateGauge(solisGauge, soc);
-    setText('solis-soc', `${fmt(soc, 0)}%`);
+    setNum('solis-soc', soc, v => `${fmt(v, 0)}%`);
 
-    const battW = Number(d.battery_power ?? 0);
-    setBadge('solis-batt-badge', battW);
-    setText('solis-batt-watts', `${fmt(Math.abs(battW), 0)} W`);
-    let mode = 'Idle';
-    if (battW > 50) mode = 'Charging';
-    else if (battW < -50) mode = 'Discharging';
-    setText('solis-mode', mode);
+    const battW = d.battery_power;
+    if (battW != null) {
+        setBadge('solis-batt-badge', battW);
+        setNum('solis-batt-watts', battW, v => `${fmt(Math.abs(v), 0)} W`);
+        let mode = 'Idle';
+        if (battW > 50) mode = 'Charging';
+        else if (battW < -50) mode = 'Discharging';
+        setText('solis-mode', mode);
+    }
 
-    setText('solis-pv',         fmt(d.pv_total_power, 0));
-    setText('solis-pv-today',   `${fmt(d.pv_today_energy, 1)} kWh`);
+    setNum('solis-pv',       d.pv_total_power,  v => fmt(v, 0));
+    setNum('solis-pv-today', d.pv_today_energy, v => `${fmt(v, 1)} kWh`);
 
-    const active = Number(d.active_power ?? 0);
-    setText('solis-active', fmt(Math.abs(active), 0));
-    setText('solis-active-dir', active > 50 ? 'Exporting' : (active < -50 ? 'Importing' : 'Idle'));
+    const active = d.active_power;
+    setNum('solis-active', active, v => fmt(Math.abs(v), 0));
+    if (active != null) {
+        setText('solis-active-dir', active > 50 ? 'Exporting' : (active < -50 ? 'Importing' : 'Idle'));
+    }
 
-    setText('solis-batt', fmt(Math.abs(battW), 0));
-    setText('solis-batt-dir', battW > 50 ? 'Charging' : (battW < -50 ? 'Discharging' : 'Idle'));
-    setText('solis-dc', fmt(d.dc_bus_voltage, 0));
-    setText('solis-bms-status', d.bms_status_str ?? '—');
-    setText('solis-vab', fmt(d.grid_voltage_ab, 1));
-    setText('solis-vbc', fmt(d.grid_voltage_bc, 1));
-    setText('solis-vca', fmt(d.grid_voltage_ca, 1));
-    setText('solis-freq', fmt(d.grid_frequency, 2));
-    setText('solis-temp', fmt(d.inverter_temp, 1));
+    setNum('solis-batt', battW, v => fmt(Math.abs(v), 0));
+    if (battW != null) {
+        setText('solis-batt-dir', battW > 50 ? 'Charging' : (battW < -50 ? 'Discharging' : 'Idle'));
+    }
+    setNum('solis-dc',   d.dc_bus_voltage,   v => fmt(v, 0));
+    setNum('solis-vab',  d.grid_voltage_ab,  v => fmt(v, 1));
+    setNum('solis-vbc',  d.grid_voltage_bc,  v => fmt(v, 1));
+    setNum('solis-vca',  d.grid_voltage_ca,  v => fmt(v, 1));
+    setNum('solis-freq', d.grid_frequency,   v => fmt(v, 2));
+    setNum('solis-temp', d.inverter_temp,    v => fmt(v, 1));
+    if (d.bms_status_str) setText('solis-bms-status', d.bms_status_str);
 }
 
 function renderTotals(spp, sppStatus, sol, solStatus) {
@@ -504,9 +598,27 @@ async function fetchHistory() {
     } catch (e) { console.warn('fetchHistory:', e); }
 }
 
-// Client-clock-driven age indicator and watchdog. Runs every 1 s regardless
+// Client-clock-driven age indicators and watchdog. Runs every 1 s regardless
 // of fetch success, so a frozen page is immediately obvious in the header.
+// Three things tick:
+//   - sppro-age   : time since SP Pro's back-end last polled the SP Pro
+//   - solis-age   : same for Solis (will keep climbing if Solis is offline)
+//   - age-indicator: time since the BROWSER last got any successful response
+//                    (this drives the 60 s watchdog reload)
+function tickPerDevice(side, threshold = 30000) {
+    const el = document.getElementById(side + '-age');
+    if (!el) return;
+    const t = lastReadAt[side];
+    if (t === null) { el.textContent = ''; el.className = 'age'; return; }
+    const age = Date.now() - t;
+    el.textContent = `(${ageStr(age)})`;
+    el.className = 'age' + (age > threshold * 4 ? ' fail' : age > threshold ? ' warn' : '');
+}
+
 function tickAge() {
+    tickPerDevice('sppro');
+    tickPerDevice('solis');
+
     const el = document.getElementById('age-indicator');
     if (!el) return;
     if (lastSuccessAt === null) {
