@@ -5,7 +5,7 @@ Live monitoring dashboard for the Mooramoora off-grid microgrid. Polls a Selectr
 ## What it monitors
 
 - **Selectronic SP Pro** — battery state of charge, battery power, solar (DC shunt + AC-coupled), grid import/export, load, and lifetime energy totals
-- **Solis S6-EH3P 50 kW Hybrid Inverter** — battery SoC, PV string voltages/currents, total PV power, three-phase grid voltages and frequency, battery health, faults, and DC bus voltage
+- **Solis S6-EH3P 50 kW Hybrid Inverter** — dual-port battery SoC (Battery 1 + Battery 2, averaged), PV string voltages/currents, total PV power, three-phase grid voltages and frequency, per-battery BMS health/temperature, faults, and DC bus voltage
 
 ## Architecture
 
@@ -77,12 +77,12 @@ sudo systemctl enable --now microgrid-pusher.service
 ## Quick start — VPS (pignus)
 
 ```bash
-git clone https://github.com/glenmo/microgrid_remote_monitor /opt/microgrid_remote_monitor
-cd /opt/microgrid_remote_monitor/server
+git clone https://github.com/glenmo/microgrid_remote_monitor ~/microgrid_remote_monitor
+cd ~/microgrid_remote_monitor/server
 sudo bash install_server.sh
 ```
 
-Edit `/etc/systemd/system/microgrid-server.service` to set `MONITOR_API_KEY` (must match the Pi), then start it. The Apache vhost in `server/monitor.mooramoora.org.au.conf` reverse-proxies `/sppro/` to the Flask app on `:8100`.
+Edit `/etc/systemd/system/microgrid-monitor.service` to set `MONITOR_API_KEY` (must match the Pi), then start it. The Apache vhost in `server/monitor.mooramoora.org.au.conf` reverse-proxies to the Flask app on `:8100`.
 
 ## Command-line options (`app.py`)
 
@@ -141,6 +141,7 @@ The dashboard polls `/api/sppro/{data,status}` and `/api/solis/{data,status}` ev
 
 - **Cache-busting** — every fetch appends `?_=<timestamp>` and sends `cache: 'no-store'`.
 - **Per-device age indicator** — `(Xs ago)` next to each device name in the header, driven by the local clock. Turns orange after 30 s, red after 2 min.
+- **Dual-battery display** — when Battery 2 (BMS2) data is present, the Solis SoC gauge shows the average of Battery 1 and Battery 2, and separate detail blocks appear for each battery showing SoC, power, voltage/current, and BMS temperature. Site Totals combines both battery powers. If only one battery is connected, the gauge shows Battery 1 only and the detail blocks are hidden.
 - **Stale-value preservation** — when a field is missing in the latest response, the previously rendered value is kept on screen (dimmed) instead of falling to `0` or `—`. Whole columns dim when the device disconnects.
 - **Watchdog auto-reload** — if no successful fetch arrives for 60 s, `location.reload()` fires.
 - **Meta-refresh backstop** — `<meta http-equiv="refresh" content="600">` hard-reloads every 10 minutes regardless of JS state.
@@ -162,14 +163,25 @@ The dashboard polls `/api/sppro/{data,status}` and `/api/solis/{data,status}` ev
 | 33139 | Battery SoC | U16 | % | 1 |
 | 33140 | Battery SoH | U16 | % | 1 |
 
+| 34275 | BMS2 Battery Voltage | U16 | V | ÷100 |
+| 34276 | BMS2 Battery Current | S16 | A | ÷10 |
+| 34277 | BMS2 Battery Temperature | S16 | °C | ÷10 |
+| 34278 | BMS2 Battery SoC | U16 | % | 1 |
+| 34279 | BMS2 Battery SoH | U16 | % | 1 |
+| 34280–82 | BMS2 Charge/Discharge limits | U16 | V/A | ÷10 |
+| 34288 | BMS2 Battery Status | U16 | — | 1 |
+| 34289 | Battery 2 Voltage | U16 | V | ÷10 |
+| 34290 | Battery 2 Current | S16 | A | ÷10 |
+| 34291 | Battery 2 Direction | U16 | — | 1 (0=charge, 1=discharge) |
+
 Full map in `app.py` `REGISTER_MAP`.
 
 ## Network setup
 
-- **Solis** — Ethernet on the LAN at 192.168.11.214:502 (Modbus TCP, slave ID 1).
+- **Solis** — Ethernet on the LAN at 192.168.11.214:502 (Modbus TCP, slave ID 1). Dual battery ports — Battery 1 registers in the 33xxx range, Battery 2 (BMS2) in the 34xxx range. Only one Modbus TCP connection is allowed at a time.
 - **SP Pro** — Ethernet on the LAN at 192.168.11.240. The site uses the proprietary Selectronic *selpi* protocol on TCP 10001 with a password; this is what the production `microgrid-monitor.service` ExecStart uses. The `sppro_reader.py` in this repo is a fall-back that uses Modbus TCP on the standard 502.
 - **rubberduck** — Raspberry Pi 5 at the site, hostname `rubberduck.local`. Runs `microgrid-monitor.service` and `microgrid-pusher.service`. Old service name `solis-monitor` is retired.
-- **pignus** — VPS hosting `monitor.mooramoora.org.au`, runs `microgrid-server.service` behind Apache.
+- **pignus** — VPS hosting `monitor.mooramoora.org.au`, runs `microgrid-monitor.service` behind Apache. Repo cloned to `~/microgrid_remote_monitor`.
 
 ## Local development
 
