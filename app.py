@@ -203,8 +203,8 @@ class SolisModbusReader:
         self.raw_data = {}
 
         # History for charts (keep last 24 hours at ~5s intervals = ~17280 points,
-        # but we'll downsample to 1-minute averages for the chart = 1440 points)
-        self.history_max = 1440
+        # but we'll 7 days at 1-minute intervals = 10080 points
+        self.history_max = 10080
         self.history = {
             "timestamps": deque(maxlen=self.history_max),
             "battery_soc": deque(maxlen=self.history_max),

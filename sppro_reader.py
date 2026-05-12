@@ -87,8 +87,8 @@ class SPProModbusReader:
         # Current processed data (combined from all 3 slaves)
         self.data = {}
 
-        # History for charts (1-minute samples, 24 hours)
-        self.history_max = 1440
+        # History for charts — 7 days at 1-minute intervals
+        self.history_max = 10080
         self.history = {
             "timestamps":          deque(maxlen=self.history_max),
             "battery_soc":         deque(maxlen=self.history_max),

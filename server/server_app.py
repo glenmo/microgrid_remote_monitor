@@ -45,7 +45,7 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 # ---------------------------------------------------------------------------
 # Data store (in-memory with history)
 # ---------------------------------------------------------------------------
-MAX_HISTORY = 1440  # 24 hours at 1-minute intervals
+MAX_HISTORY = 10080  # 7 days at 1-minute intervals
 
 data_lock = threading.Lock()
 
