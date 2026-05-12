@@ -233,6 +233,37 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
                 Frequency: <strong id="solis-freq">—</strong> Hz · Module temp: <strong id="solis-temp">—</strong>°C
             </div>
         </div>
+
+        <!-- Battery 2 (hidden by default, shown when dual-battery data is present) -->
+        <div id="battery2Section" style="display:none;">
+            <div class="card" style="margin-top:8px;">
+                <div class="card-title">Battery 2</div>
+                <div class="flow-grid">
+                    <div class="flow-tile">
+                        <div class="icon" style="color:var(--accent-green);">🔋</div>
+                        <div class="lbl">SoC</div>
+                        <div class="val"><span id="batt2-soc">—</span><small>%</small></div>
+                        <div class="sub">SoH: <span id="batt2-soh">—</span>%</div>
+                    </div>
+                    <div class="flow-tile">
+                        <div class="icon" style="color:var(--accent-blue);">⚡</div>
+                        <div class="lbl">Power</div>
+                        <div class="val"><span id="batt2-power">—</span><small>W</small></div>
+                        <div class="sub" id="batt2-dir">Idle</div>
+                    </div>
+                    <div class="flow-tile">
+                        <div class="lbl">Voltage</div>
+                        <div class="val"><span id="batt2-volt">—</span><small>V</small></div>
+                        <div class="sub"><span id="batt2-curr">—</span> A</div>
+                    </div>
+                    <div class="flow-tile">
+                        <div class="lbl">BMS2 Temp</div>
+                        <div class="val"><span id="batt2-temp">—</span><small>°C</small></div>
+                        <div class="sub" id="batt2-bms-status">—</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </section>
 
     <!-- ======== Site totals (full width) ======== -->
@@ -505,6 +536,21 @@ function renderSolis(d, status) {
     setNum('solis-freq', d.grid_frequency,   v => fmt(v, 2));
     setNum('solis-temp', d.inverter_temp,    v => fmt(v, 1));
     if (d.bms_status_str) setText('solis-bms-status', d.bms_status_str);
+
+    // Battery 2 — show section only when BMS2 data is present
+    const b2Section = document.getElementById('battery2Section');
+    if (d.bms2_battery_soc !== undefined && d.bms2_battery_soc !== null) {
+        b2Section.style.display = 'block';
+        setNum('batt2-soc', d.bms2_battery_soc, v => fmt(v, 0));
+        setNum('batt2-soh', d.bms2_battery_soh, v => fmt(v, 0));
+        const b2pwr = d.battery2_power ?? 0;
+        setNum('batt2-power', b2pwr, v => fmt(Math.abs(v), 0));
+        setText('batt2-dir', b2pwr > 50 ? 'Charging' : (b2pwr < -50 ? 'Discharging' : 'Idle'));
+        setNum('batt2-volt', d.battery2_voltage, v => fmt(v, 1));
+        setNum('batt2-curr', d.battery2_current, v => fmt(v, 1));
+        setNum('batt2-temp', d.bms2_battery_temp, v => fmt(v, 1));
+        if (d.bms2_status_str) setText('batt2-bms-status', d.bms2_status_str);
+    }
 }
 
 function renderTotals(spp, sppStatus, sol, solStatus) {

@@ -137,6 +137,22 @@ REGISTER_MAP = [
     # Backup output
     (33137, 1, "backup_voltage",        "U16", "V",     10,    "Backup AC Voltage (Phase A)"),
     (33138, 1, "backup_current",        "U16", "A",     10,    "Backup AC Current (Phase A)"),
+
+    # Battery 2 — Inverter-side (dual battery port models only)
+    (34289, 1, "battery2_voltage",      "U16", "V",     10,    "Battery 2 Voltage"),
+    (34290, 1, "battery2_current",      "S16", "A",     10,    "Battery 2 Current"),
+    (34291, 1, "battery2_current_dir",  "U16", "",      1,     "Battery 2 Direction (0=charge, 1=discharge)"),
+
+    # Battery 2 — BMS2 data (dual battery port models only)
+    (34275, 1, "bms2_battery_voltage",  "U16", "V",     100,   "BMS2 Battery Voltage"),
+    (34276, 1, "bms2_battery_current",  "S16", "A",     10,    "BMS2 Battery Current"),
+    (34277, 1, "bms2_battery_temp",     "S16", "°C",    10,    "BMS2 Battery Temperature"),
+    (34278, 1, "bms2_battery_soc",      "U16", "%",     1,     "BMS2 Battery SOC"),
+    (34279, 1, "bms2_battery_soh",      "U16", "%",     1,     "BMS2 Battery SOH"),
+    (34280, 1, "bms2_charge_voltage_limit", "U16", "V", 10,    "BMS2 Charging Voltage Limit"),
+    (34281, 1, "bms2_charge_limit",     "U16", "A",     10,    "BMS2 Charge Current Limit"),
+    (34282, 1, "bms2_discharge_limit",  "U16", "A",     10,    "BMS2 Discharge Current Limit"),
+    (34288, 1, "bms2_status",           "U16", "",      1,     "BMS2 Battery Status"),
 ]
 
 # Lookup table for working mode codes
@@ -347,12 +363,25 @@ class SolisModbusReader:
                 batt_power = -batt_power
             new_data["battery_power"] = round(batt_power, 1)
 
+        # Calculate Battery 2 power (voltage * current, with direction)
+        if "battery2_voltage" in new_data and "battery2_current" in new_data:
+            batt2_v = new_data["battery2_voltage"]
+            batt2_i = abs(new_data["battery2_current"])
+            direction2 = new_data.get("battery2_current_dir", 0)
+            batt2_power = batt2_v * batt2_i
+            if direction2 == 1:  # discharging
+                batt2_power = -batt2_power
+            new_data["battery2_power"] = round(batt2_power, 1)
+
         # Add decoded status strings
         wm = new_data.get("working_mode", 0)
         new_data["working_mode_str"] = WORKING_MODES.get(int(wm), f"Unknown ({int(wm)})")
 
         bms = new_data.get("bms_status", 0)
         new_data["bms_status_str"] = BMS_STATUS.get(int(bms), f"Unknown ({int(bms)})")
+
+        bms2 = new_data.get("bms2_status", 0)
+        new_data["bms2_status_str"] = BMS_STATUS.get(int(bms2), f"Unknown ({int(bms2)})")
 
         # Add metadata
         now = datetime.now()

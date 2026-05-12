@@ -454,7 +454,7 @@
         </div>
 
         <div class="card">
-            <div class="card-title">Battery BMS Detail</div>
+            <div class="card-title">Battery 1 — BMS Detail</div>
             <table class="pv-table">
                 <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
                 <tbody>
@@ -465,6 +465,51 @@
                     <tr><td>DC Bus Voltage</td><td id="dcBusV">--</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Battery 2 section (hidden by default, shown only when dual-battery data is present) -->
+    <div id="battery2Section" style="display:none;">
+        <div class="detail-row">
+            <div class="card">
+                <div class="card-title">Battery 2 — Summary</div>
+                <div class="metrics-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:12px;">
+                    <div class="metric" style="text-align:center;">
+                        <div class="metric-label">SoC</div>
+                        <div class="metric-value" id="batt2Soc">--<span class="metric-unit">%</span></div>
+                        <div class="metric-sub">SoH: <span id="batt2Soh">--</span>%</div>
+                    </div>
+                    <div class="metric" style="text-align:center;">
+                        <div class="metric-label">Power</div>
+                        <div class="metric-value" id="batt2Power">--<span class="metric-unit">W</span></div>
+                        <div class="metric-sub" id="batt2Direction">--</div>
+                    </div>
+                    <div class="metric" style="text-align:center;">
+                        <div class="metric-label">Voltage / Current</div>
+                        <div class="metric-value" id="batt2Voltage">--<span class="metric-unit">V</span></div>
+                        <div class="metric-sub"><span id="batt2Current">--</span> A</div>
+                    </div>
+                    <div class="metric" style="text-align:center;">
+                        <div class="metric-label">BMS2 Temp</div>
+                        <div class="metric-value" id="bms2Temp">--<span class="metric-unit">&deg;C</span></div>
+                        <div class="metric-sub">Status: <span id="bms2Status">--</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Battery 2 — BMS2 Detail</div>
+                <table class="pv-table">
+                    <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+                    <tbody>
+                        <tr><td>BMS2 Voltage</td><td id="bms2Volt">--</td></tr>
+                        <tr><td>BMS2 Current</td><td id="bms2Curr">--</td></tr>
+                        <tr><td>Charge Limit</td><td id="bms2ChgLim">--</td></tr>
+                        <tr><td>Discharge Limit</td><td id="bms2DischLim">--</td></tr>
+                        <tr><td>Charge Voltage Limit</td><td id="bms2ChgVLim">--</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -938,6 +983,34 @@ function updateDashboard(d) {
     document.getElementById('bmsChgLim').textContent = fmt(d.bms_charge_limit, 1) + ' A';
     document.getElementById('bmsDischLim').textContent = fmt(d.bms_discharge_limit, 1) + ' A';
     document.getElementById('dcBusV').textContent = fmt(d.dc_bus_voltage, 1) + ' V';
+
+    // Battery 2 — show section only when BMS2 data is present
+    const b2Section = document.getElementById('battery2Section');
+    if (d.bms2_battery_soc !== undefined && d.bms2_battery_soc !== null) {
+        b2Section.style.display = 'block';
+        document.getElementById('batt2Soc').innerHTML = fmt(d.bms2_battery_soc, 0) + '<span class="metric-unit">%</span>';
+        document.getElementById('batt2Soh').textContent = fmt(d.bms2_battery_soh, 0);
+
+        const b2pwr = d.battery2_power ?? 0;
+        document.getElementById('batt2Power').innerHTML = fmt(Math.abs(b2pwr), 0) + '<span class="metric-unit">W</span>';
+        const b2dir = d.battery2_current_dir;
+        const b2dirEl = document.getElementById('batt2Direction');
+        if (b2dir === 0) { b2dirEl.textContent = 'Charging'; b2dirEl.style.color = '#22c55e'; }
+        else if (b2dir === 1) { b2dirEl.textContent = 'Discharging'; b2dirEl.style.color = '#f97316'; }
+        else { b2dirEl.textContent = 'Idle'; b2dirEl.style.color = '#94a3b8'; }
+
+        document.getElementById('batt2Voltage').innerHTML = fmt(d.battery2_voltage, 1) + '<span class="metric-unit">V</span>';
+        document.getElementById('batt2Current').textContent = fmt(d.battery2_current, 1);
+        document.getElementById('bms2Temp').innerHTML = fmt(d.bms2_battery_temp, 1) + '<span class="metric-unit">&deg;C</span>';
+        document.getElementById('bms2Status').textContent = d.bms2_status_str ?? '--';
+
+        // BMS2 detail table
+        document.getElementById('bms2Volt').textContent = fmt(d.bms2_battery_voltage, 2) + ' V';
+        document.getElementById('bms2Curr').textContent = fmt(d.bms2_battery_current, 1) + ' A';
+        document.getElementById('bms2ChgLim').textContent = fmt(d.bms2_charge_limit, 1) + ' A';
+        document.getElementById('bms2DischLim').textContent = fmt(d.bms2_discharge_limit, 1) + ' A';
+        document.getElementById('bms2ChgVLim').textContent = fmt(d.bms2_charge_voltage_limit, 1) + ' V';
+    }
 
     // System info
     document.getElementById('pvTotal').textContent = fmt(d.pv_total_energy, 0);
