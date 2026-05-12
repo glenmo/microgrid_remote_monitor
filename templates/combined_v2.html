@@ -234,8 +234,35 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
             </div>
         </div>
 
-        <!-- Battery 2 (hidden by default, shown when dual-battery data is present) -->
-        <div id="battery2Section" style="display:none;">
+        <!-- Battery detail blocks (shown when dual-battery data is present) -->
+        <div id="batteryDetailSection" style="display:none;">
+            <div class="card" style="margin-top:8px;">
+                <div class="card-title">Battery 1</div>
+                <div class="flow-grid">
+                    <div class="flow-tile">
+                        <div class="icon" style="color:var(--accent-green);">🔋</div>
+                        <div class="lbl">SoC</div>
+                        <div class="val"><span id="batt1-soc">—</span><small>%</small></div>
+                        <div class="sub">SoH: <span id="batt1-soh">—</span>%</div>
+                    </div>
+                    <div class="flow-tile">
+                        <div class="icon" style="color:var(--accent-blue);">⚡</div>
+                        <div class="lbl">Power</div>
+                        <div class="val"><span id="batt1-power">—</span><small>W</small></div>
+                        <div class="sub" id="batt1-dir">Idle</div>
+                    </div>
+                    <div class="flow-tile">
+                        <div class="lbl">Voltage</div>
+                        <div class="val"><span id="batt1-volt">—</span><small>V</small></div>
+                        <div class="sub"><span id="batt1-curr">—</span> A</div>
+                    </div>
+                    <div class="flow-tile">
+                        <div class="lbl">BMS Temp</div>
+                        <div class="val"><span id="batt1-temp">—</span><small>°C</small></div>
+                        <div class="sub" id="batt1-bms-status">—</div>
+                    </div>
+                </div>
+            </div>
             <div class="card" style="margin-top:8px;">
                 <div class="card-title">Battery 2</div>
                 <div class="flow-grid">
@@ -502,11 +529,18 @@ function renderSolis(d, status) {
         return;
     }
 
-    const soc = d.battery_soc;
-    updateGauge(solisGauge, soc);
-    setNum('solis-soc', soc, v => `${fmt(v, 0)}%`);
+    // SoC gauge — show average if dual battery, otherwise Battery 1 only
+    const soc1 = d.battery_soc;
+    const hasBatt2 = d.bms2_battery_soc !== undefined && d.bms2_battery_soc !== null;
+    const soc2 = hasBatt2 ? d.bms2_battery_soc : null;
+    const avgSoc = hasBatt2 ? (Number(soc1 ?? 0) + Number(soc2)) / 2 : soc1;
+    updateGauge(solisGauge, avgSoc);
+    setNum('solis-soc', avgSoc, v => `${fmt(v, 0)}%`);
 
-    const battW = d.battery_power;
+    // Combined battery power (Battery 1 + Battery 2)
+    const batt1W = d.battery_power ?? 0;
+    const batt2W = hasBatt2 ? (d.battery2_power ?? 0) : 0;
+    const battW = batt1W + batt2W;
     if (battW != null) {
         setBadge('solis-batt-badge', battW);
         setNum('solis-batt-watts', battW, v => `${fmt(Math.abs(v), 0)} W`);
@@ -526,9 +560,7 @@ function renderSolis(d, status) {
     }
 
     setNum('solis-batt', battW, v => fmt(Math.abs(v), 0));
-    if (battW != null) {
-        setText('solis-batt-dir', battW > 50 ? 'Charging' : (battW < -50 ? 'Discharging' : 'Idle'));
-    }
+    setText('solis-batt-dir', battW > 50 ? 'Charging' : (battW < -50 ? 'Discharging' : 'Idle'));
     setNum('solis-dc',   d.dc_bus_voltage,   v => fmt(v, 0));
     setNum('solis-vab',  d.grid_voltage_ab,  v => fmt(v, 1));
     setNum('solis-vbc',  d.grid_voltage_bc,  v => fmt(v, 1));
@@ -537,11 +569,23 @@ function renderSolis(d, status) {
     setNum('solis-temp', d.inverter_temp,    v => fmt(v, 1));
     if (d.bms_status_str) setText('solis-bms-status', d.bms_status_str);
 
-    // Battery 2 — show section only when BMS2 data is present
-    const b2Section = document.getElementById('battery2Section');
-    if (d.bms2_battery_soc !== undefined && d.bms2_battery_soc !== null) {
-        b2Section.style.display = 'block';
-        setNum('batt2-soc', d.bms2_battery_soc, v => fmt(v, 0));
+    // Battery detail blocks — show when dual battery is present
+    const detailSection = document.getElementById('batteryDetailSection');
+    if (hasBatt2) {
+        detailSection.style.display = 'block';
+
+        // Battery 1
+        setNum('batt1-soc', soc1, v => fmt(v, 0));
+        setNum('batt1-soh', d.battery_soh, v => fmt(v, 0));
+        setNum('batt1-power', batt1W, v => fmt(Math.abs(v), 0));
+        setText('batt1-dir', batt1W > 50 ? 'Charging' : (batt1W < -50 ? 'Discharging' : 'Idle'));
+        setNum('batt1-volt', d.battery_voltage, v => fmt(v, 1));
+        setNum('batt1-curr', d.battery_current, v => fmt(v, 1));
+        setNum('batt1-temp', d.battery_mos_temp, v => fmt(v, 1));
+        setText('batt1-bms-status', d.bms_status_str ?? '—');
+
+        // Battery 2
+        setNum('batt2-soc', soc2, v => fmt(v, 0));
         setNum('batt2-soh', d.bms2_battery_soh, v => fmt(v, 0));
         const b2pwr = d.battery2_power ?? 0;
         setNum('batt2-power', b2pwr, v => fmt(Math.abs(v), 0));
@@ -549,7 +593,7 @@ function renderSolis(d, status) {
         setNum('batt2-volt', d.battery2_voltage, v => fmt(v, 1));
         setNum('batt2-curr', d.battery2_current, v => fmt(v, 1));
         setNum('batt2-temp', d.bms2_battery_temp, v => fmt(v, 1));
-        if (d.bms2_status_str) setText('batt2-bms-status', d.bms2_status_str);
+        setText('batt2-bms-status', d.bms2_status_str ?? '—');
     }
 }
 
@@ -564,18 +608,32 @@ function renderTotals(spp, sppStatus, sol, solStatus) {
     setText('t-pv-solis', solOk ? `${fmt(solPv, 0)} W` : 'offline');
 
     const sppBatt = sppOk ? Number(spp?.battery_w ?? 0) : 0;
-    const solBatt = solOk ? Number(sol?.battery_power ?? 0) : 0;
+    const solBatt1 = solOk ? Number(sol?.battery_power ?? 0) : 0;
+    const solBatt2 = solOk ? Number(sol?.battery2_power ?? 0) : 0;
+    const solBatt = solBatt1 + solBatt2;
     setText('t-batt', fmt(sppBatt + solBatt, 0));
     setText('t-batt-sppro', sppOk ? `${fmt(sppBatt, 0)} W` : 'offline');
     setText('t-batt-solis', solOk ? `${fmt(solBatt, 0)} W` : 'offline');
 
     const socs = [];
     if (sppOk) socs.push(Number(spp?.battery_soc ?? 0));
-    if (solOk) socs.push(Number(sol?.battery_soc ?? 0));
+    if (solOk) {
+        const s1 = Number(sol?.battery_soc ?? 0);
+        const s2 = sol?.bms2_battery_soc;
+        const solAvg = (s2 !== undefined && s2 !== null) ? (s1 + Number(s2)) / 2 : s1;
+        socs.push(solAvg);
+    }
     const avg = socs.length ? socs.reduce((a,b)=>a+b,0)/socs.length : NaN;
     setText('t-soc', isNaN(avg) ? '—' : fmt(avg, 0));
     setText('t-soc-sppro', sppOk ? fmt(Number(spp?.battery_soc ?? 0), 0) : '—');
-    setText('t-soc-solis', solOk ? fmt(Number(sol?.battery_soc ?? 0), 0) : '—');
+    if (solOk) {
+        const s1 = Number(sol?.battery_soc ?? 0);
+        const s2 = sol?.bms2_battery_soc;
+        const solSocDisplay = (s2 !== undefined && s2 !== null) ? (s1 + Number(s2)) / 2 : s1;
+        setText('t-soc-solis', fmt(solSocDisplay, 0));
+    } else {
+        setText('t-soc-solis', '—');
+    }
 
     const sppT = sppOk ? Number(spp?.solar_wh_today ?? 0) : 0;
     const solT = solOk ? Number(sol?.pv_today_energy ?? 0) : 0;
