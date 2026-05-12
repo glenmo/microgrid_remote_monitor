@@ -410,6 +410,24 @@ function setBadge(id, watts, threshold = 50) {
 
 const spproGauge = makeGauge('sppro-socGauge');
 const solisGauge = makeGauge('solis-socGauge');
+
+// Solid-fill legend labels (no outline boxes)
+const solidLegend = {
+    labels: {
+        color: '#94a3b8',
+        generateLabels: function(chart) {
+            return chart.data.datasets.map((ds, i) => ({
+                text: ds.label,
+                fillStyle: ds.borderColor,
+                strokeStyle: ds.borderColor,
+                lineWidth: 0,
+                hidden: !chart.isDatasetVisible(i),
+                datasetIndex: i
+            }));
+        }
+    }
+};
+
 const freqChart = new Chart(document.getElementById('freqChart').getContext('2d'), {
     type: 'line',
     data: { labels: [], datasets: [
@@ -428,7 +446,7 @@ const freqChart = new Chart(document.getElementById('freqChart').getContext('2d'
                  title: { display: true, text: 'Hz', color: '#94a3b8' } },
             x: { grid: {color: '#1e293b'} }
         },
-        plugins: { legend: {labels: {color: '#94a3b8'}} }
+        plugins: { legend: solidLegend }
     }
 });
 
@@ -441,7 +459,25 @@ const socChart = new Chart(document.getElementById('socChart').getContext('2d'),
     options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         scales: { y: { min: 0, max: 100, grid: {color: '#1e293b'} }, x: { grid: {color: '#1e293b'} } },
-        plugins: { legend: {labels: {color: '#94a3b8'}} }
+        plugins: { legend: solidLegend }
+    }
+});
+
+const pvChart = new Chart(document.getElementById('pvChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+        { label: 'Solis PV W', data: [], borderColor: '#eab308',
+          backgroundColor: 'rgba(234,179,8,0.15)', borderWidth: 2,
+          pointRadius: 0, tension: 0.3, fill: true },
+    ]},
+    options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        scales: {
+            y: { min: 0, grid: {color: '#1e293b'},
+                 title: { display: true, text: 'W', color: '#94a3b8' } },
+            x: { grid: {color: '#1e293b'} }
+        },
+        plugins: { legend: solidLegend }
     }
 });
 
@@ -687,18 +723,29 @@ async function fetchHistory() {
             getJSON('/api/sppro/history').catch(()=>({})),
             getJSON('/api/solis/history').catch(()=>({})),
         ]);
-        const labels = (sppH.timestamps?.length || 0) >= (solH.timestamps?.length || 0)
+        // SoC chart â full 7-day history
+        const socLabels = (sppH.timestamps?.length || 0) >= (solH.timestamps?.length || 0)
             ? (sppH.timestamps || []) : (solH.timestamps || []);
-        socChart.data.labels = labels;
+        socChart.data.labels = socLabels;
         socChart.data.datasets[0].data = sppH.battery_soc || [];
         socChart.data.datasets[1].data = solH.battery_soc || [];
         socChart.update('none');
 
-        // Microgrid frequency from Solis grid_frequency history (Solis follows
-        // the AC bus, so it's a good proxy for the bus frequency overall).
-        freqChart.data.labels = labels;
-        freqChart.data.datasets[0].data = solH.grid_frequency || [];
+        // Frequency chart â last 24 hours only (1440 entries)
+        const freqAll = solH.grid_frequency || [];
+        const freqLabelsAll = solH.timestamps || [];
+        const freqLen = Math.min(freqAll.length, 1440);
+        freqChart.data.labels = freqLabelsAll.slice(-freqLen);
+        freqChart.data.datasets[0].data = freqAll.slice(-freqLen);
         freqChart.update('none');
+
+        // PV chart â today only (last 1440 entries = 24h)
+        const pvAll = solH.pv_total_power || [];
+        const pvLabelsAll = solH.timestamps || [];
+        const pvLen = Math.min(pvAll.length, 1440);
+        pvChart.data.labels = pvLabelsAll.slice(-pvLen);
+        pvChart.data.datasets[0].data = pvAll.slice(-pvLen);
+        pvChart.update('none');
     } catch (e) { console.warn('fetchHistory:', e); }
 }
 
