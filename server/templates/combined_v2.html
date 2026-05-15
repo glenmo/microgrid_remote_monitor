@@ -395,7 +395,7 @@ const socChart = new Chart(document.getElementById('socChart').getContext('2d'),
     }
 });
 
-const pvChart = new Chart(document.getElementById('pvChart').getContext('2d'), {
+const pvChart = document.getElementById('pvChart') && new Chart(document.getElementById('pvChart').getContext('2d'), {
     type: 'line',
     data: { labels: [], datasets: [
         { label: 'Solis PV W', data: [], borderColor: '#eab308',
@@ -622,9 +622,9 @@ async function fetchHistory() {
         const pvAll = solH.pv_total_power || [];
         const pvLabelsAll = solH.timestamps || [];
         const pvLen = Math.min(pvAll.length, 1440);
-        pvChart.data.labels = pvLabelsAll.slice(-pvLen);
-        pvChart.data.datasets[0].data = pvAll.slice(-pvLen);
-        pvChart.update('none');
+//         pvChart.data.labels = pvLabelsAll.slice(-pvLen);
+//         pvChart.data.datasets[0].data = pvAll.slice(-pvLen);
+//         pvChart.update('none');
     } catch (e) { console.warn(e); }
 }
 
