@@ -30,6 +30,7 @@ from pymodbus.exceptions import ModbusIOException
 
 from eastron_reader import EastronModbusReader
 from sppro_reader import SPProModbusReader
+from sppro_sx_reader import SPProSxReader
 from switchdin_reader import SwitchDinReader
 
 # NOTE: pymodbus v3.6+ uses 'device_id' parameter.
@@ -470,7 +471,7 @@ switchdin: SwitchDinReader = None
 @app.route("/")
 def index():
     """Serve the dashboard page."""
-    return render_template("dashboard.html")
+    return render_template("combined_v2.html")
 
 
 @app.route("/api/data")
@@ -643,6 +644,8 @@ def main():
                         help="SP Pro Modbus TCP port (default: 502)")
     parser.add_argument("--sppro-poll", type=int, default=5,
                         help="SP Pro poll interval in seconds (default: 5)")
+    parser.add_argument("--sppro-password", default=None,
+                        help="SP Pro password (uses selpi protocol when set)")
     parser.add_argument("--no-sppro", action="store_true",
                         help="Disable the SP Pro inverter reader")
 
@@ -728,11 +731,19 @@ def main():
 
     # Start SP Pro reader (direct Modbus — disabled by default now)
     if not args.no_sppro:
-        sppro = SPProModbusReader(
-            ip=args.sppro_ip,
-            port=args.sppro_port,
-            poll_interval=args.sppro_poll,
-        )
+        if args.sppro_password:
+            sppro = SPProSxReader(
+                host=args.sppro_ip,
+                port=args.sppro_port,
+                password=args.sppro_password,
+                poll_interval=args.sppro_poll,
+            )
+        else:
+            sppro = SPProModbusReader(
+                ip=args.sppro_ip,
+                port=args.sppro_port,
+                poll_interval=args.sppro_poll,
+            )
         sppro.start()
 
     # Start SwitchDin reader (SP Pro via Stormcloud cloud API)
