@@ -301,7 +301,7 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     </section>
 
     <section class="card span-2">
-        <div class="card-title">Battery SoC — Last 24 Hours</div>
+        <div class="card-title">Battery SoC — Last 7 Days</div>
         <div class="chart-wrap"><canvas id="socChart"></canvas></div>
     </section>
 
@@ -349,7 +349,7 @@ const solisGauge = makeGauge('solis-socGauge');
 // Solid-fill legend labels (no outline boxes)
 const solidLegend = {
     labels: {
-        color: '#94a3b8',
+        color: '#e8edf2',
         generateLabels: function(chart) {
             return chart.data.datasets.map((ds, i) => ({
                 text: ds.label,
@@ -375,7 +375,7 @@ const freqChart = new Chart(document.getElementById('freqChart').getContext('2d'
         scales: {
             y: { min: 49.5, max: 55, ticks: { stepSize: 0.5 },
                  grid: {color: '#1e293b'},
-                 title: { display: true, text: 'Hz', color: '#94a3b8' } },
+                 title: { display: true, text: 'Hz', color: '#e8edf2' } },
             x: { grid: {color: '#1e293b'} }
         },
         plugins: { legend: solidLegend }
@@ -406,7 +406,7 @@ const pvChart = document.getElementById('pvChart') && new Chart(document.getElem
         responsive: true, maintainAspectRatio: false, animation: false,
         scales: {
             y: { min: 0, grid: {color: '#1e293b'},
-                 title: { display: true, text: 'W', color: '#94a3b8' } },
+                 title: { display: true, text: 'W', color: '#e8edf2' } },
             x: { grid: {color: '#1e293b'} }
         },
         plugins: { legend: solidLegend }
