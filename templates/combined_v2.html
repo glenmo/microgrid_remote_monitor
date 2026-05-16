@@ -156,6 +156,10 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
                 <div class="row"><span class="lbl">Load</span><span class="val"><span id="sppro-e-load-today">—</span> / <span id="sppro-e-load-total">—</span> kWh</span></div>
             </div>
         </div>
+        <div class="card pv-chart-card">
+            <div class="card-title">PV Generation — Today (per tracker)</div>
+            <div class="chart-wrap"><canvas id="pvChart"></canvas></div>
+        </div>
     </section>
 
     <!-- ======== RIGHT — Solis ======== -->
@@ -399,15 +403,16 @@ const socChart = new Chart(document.getElementById('socChart').getContext('2d'),
 const pvChart = document.getElementById('pvChart') && new Chart(document.getElementById('pvChart').getContext('2d'), {
     type: 'line',
     data: { labels: [], datasets: [
-        { label: 'Solis PV W', data: [], borderColor: '#eab308',
-          backgroundColor: 'rgba(234,179,8,0.15)', borderWidth: 2,
-          pointRadius: 0, tension: 0.3, fill: true },
+        { label: 'PV1', data: [], borderColor: '#eab308', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false },
+        { label: 'PV2', data: [], borderColor: '#22c55e', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false },
+        { label: 'PV3', data: [], borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false },
+        { label: 'PV4', data: [], borderColor: '#ec4899', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false },
     ]},
     options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         scales: {
             y: { min: 0, grid: {color: '#1e293b'},
-                 title: { display: true, text: 'W', color: '#e8edf2' } },
+                 title: { display: true, text: 'kW', color: '#e8edf2' } },
             x: { grid: {color: '#1e293b'} }
         },
         plugins: { legend: solidLegend }
@@ -619,13 +624,21 @@ async function fetchHistory() {
         freqChart.data.datasets[0].data = freqAll.slice(-freqLen);
         freqChart.update('none');
 
-        // PV chart â today only (last 1440 entries = 24h)
-        const pvAll = solH.pv_total_power || [];
+        // PV chart — today only (last 1440 entries = 24h), per-tracker in kW
+        const pv1All = (solH.pv1_power || []).map(w => (w || 0) / 1000);
+        const pv2All = (solH.pv2_power || []).map(w => (w || 0) / 1000);
+        const pv3All = (solH.pv3_power || []).map(w => (w || 0) / 1000);
+        const pv4All = (solH.pv4_power || []).map(w => (w || 0) / 1000);
         const pvLabelsAll = solH.timestamps || [];
-        const pvLen = Math.min(pvAll.length, 1440);
-//         pvChart.data.labels = pvLabelsAll.slice(-pvLen);
-//         pvChart.data.datasets[0].data = pvAll.slice(-pvLen);
-//         pvChart.update('none');
+        const pvLen = Math.min(pv1All.length, 1440);
+        if (pvChart) {
+            pvChart.data.labels = pvLabelsAll.slice(-pvLen);
+            pvChart.data.datasets[0].data = pv1All.slice(-pvLen);
+            pvChart.data.datasets[1].data = pv2All.slice(-pvLen);
+            pvChart.data.datasets[2].data = pv3All.slice(-pvLen);
+            pvChart.data.datasets[3].data = pv4All.slice(-pvLen);
+            pvChart.update('none');
+        }
     } catch (e) { console.warn(e); }
 }
 
