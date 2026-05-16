@@ -374,6 +374,12 @@ class SolisModbusReader:
                 batt2_power = -batt2_power
             new_data["battery2_power"] = round(batt2_power, 1)
 
+        # PV per-tracker power (V × I, watts) — for the per-tracker generation chart
+        for n in (1, 2, 3, 4):
+            v = new_data.get(f"pv{n}_voltage", 0) or 0
+            i = new_data.get(f"pv{n}_current", 0) or 0
+            new_data[f"pv{n}_power"] = round(v * i, 1)
+
         # Add decoded status strings
         wm = new_data.get("working_mode", 0)
         new_data["working_mode_str"] = WORKING_MODES.get(int(wm), f"Unknown ({int(wm)})")
@@ -501,6 +507,21 @@ def api_status():
 # ---------------------------------------------------------------------------
 # Eastron SDM630MCT API routes
 # ---------------------------------------------------------------------------
+@app.route("/api/solis/data")
+def api_solis_data():
+    return api_data()
+
+
+@app.route("/api/solis/history")
+def api_solis_history():
+    return api_history()
+
+
+@app.route("/api/solis/status")
+def api_solis_status():
+    return api_status()
+
+
 @app.route("/api/eastron/data")
 def api_eastron_data():
     """Return current Eastron meter data as JSON."""

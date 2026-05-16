@@ -99,6 +99,10 @@ def api_push():
                 "pv_power": latest_solis.get("pv_total_power", 0),
                 "battery_power": latest_solis.get("battery_power", 0),
                 "grid_power": latest_solis.get("active_power", 0),
+                "pv1_power": latest_solis.get("pv1_power", 0),
+                "pv2_power": latest_solis.get("pv2_power", 0),
+                "pv3_power": latest_solis.get("pv3_power", 0),
+                "pv4_power": latest_solis.get("pv4_power", 0),
             }
             solis_history.append(hist_entry)
 
