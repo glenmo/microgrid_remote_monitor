@@ -180,7 +180,19 @@ def api_eastron_data():
 @app.route("/api/history")
 def api_solis_history():
     with data_lock:
-        return jsonify(list(solis_history))
+        entries = list(solis_history)
+    # Convert row format (list of dicts) → column format (dict of arrays)
+    return jsonify({
+        "timestamps":     [e.get("timestamp")       for e in entries],
+        "battery_soc":    [e.get("soc",          0) for e in entries],
+        "pv_total_power": [e.get("pv_power",     0) for e in entries],
+        "battery_power":  [e.get("battery_power",0) for e in entries],
+        "active_power":   [e.get("grid_power",   0) for e in entries],
+        "pv1_power":      [e.get("pv1_power",    0) for e in entries],
+        "pv2_power":      [e.get("pv2_power",    0) for e in entries],
+        "pv3_power":      [e.get("pv3_power",    0) for e in entries],
+        "pv4_power":      [e.get("pv4_power",    0) for e in entries],
+    })
 
 
 @app.route("/api/eastron/history")
@@ -198,7 +210,15 @@ def api_sppro_data():
 @app.route("/api/sppro/history")
 def api_sppro_history():
     with data_lock:
-        return jsonify(list(sppro_history))
+        entries = list(sppro_history)
+    return jsonify({
+        "timestamps":     [e.get("timestamp")       for e in entries],
+        "battery_soc":    [e.get("soc",          0) for e in entries],
+        "pv_power":       [e.get("pv_power",     0) for e in entries],
+        "load_power":     [e.get("load_power",   0) for e in entries],
+        "grid_power":     [e.get("grid_power",   0) for e in entries],
+        "battery_power":  [e.get("battery_power",0) for e in entries],
+    })
 
 
 
