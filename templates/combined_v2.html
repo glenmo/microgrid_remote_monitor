@@ -346,6 +346,7 @@ function setBadge(id, watts, threshold = 50) {
 const spproGauge = makeGauge('sppro-socGauge');
 const solisGauge = makeGauge('solis-socGauge');
 
+Chart.defaults.color = '#e8edf2';
 // Solid-fill legend labels (no outline boxes)
 const solidLegend = {
     labels: {
@@ -355,7 +356,7 @@ const solidLegend = {
                 text: ds.label,
                 fillStyle: ds.borderColor,
                 strokeStyle: ds.borderColor,
-                lineWidth: 0,
+                lineWidth: 0, fontColor: '#e8edf2',
                 hidden: !chart.isDatasetVisible(i),
                 datasetIndex: i
             }));
