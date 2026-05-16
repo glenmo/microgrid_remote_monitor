@@ -210,6 +210,10 @@ class SolisModbusReader:
             "timestamps": deque(maxlen=self.history_max),
             "battery_soc": deque(maxlen=self.history_max),
             "pv_total_power": deque(maxlen=self.history_max),
+            "pv1_power": deque(maxlen=self.history_max),
+            "pv2_power": deque(maxlen=self.history_max),
+            "pv3_power": deque(maxlen=self.history_max),
+            "pv4_power": deque(maxlen=self.history_max),
             "active_power": deque(maxlen=self.history_max),
             "battery_power": deque(maxlen=self.history_max),
             "battery_voltage": deque(maxlen=self.history_max),
@@ -411,7 +415,7 @@ class SolisModbusReader:
                 self._last_history_minute = current_minute
                 self.history["timestamps"].append(now.strftime("%H:%M"))
                 for key in ["battery_soc", "pv_total_power", "active_power",
-                            "battery_power", "battery_voltage", "grid_frequency"]:
+                            "battery_power", "battery_voltage", "grid_frequency", "pv1_power", "pv2_power", "pv3_power", "pv4_power"]:
                     self.history[key].append(new_data.get(key, 0))
 
     def _poll_loop(self):
