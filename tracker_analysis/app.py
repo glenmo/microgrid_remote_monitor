@@ -24,7 +24,7 @@ from typing import Any, Optional
 import requests
 from flask import Flask, jsonify, render_template, send_from_directory
 
-from sma_reader import SmaReader
+from sma_ftp import SmaFtpReader
 from solar_pos import sun_position, tracker_tilt_ns, clear_sky_ghi
 
 log = logging.getLogger("tracker_analysis")
@@ -38,10 +38,12 @@ class Config:
     host: str = "0.0.0.0"
     port: int = 8901
     solis_url: str = "http://rubberduck.local:5000/api/solis/data"
-    sma_host: str = "192.168.55.126"
-    sma_port: int = 502
-    sma_unit: int = 3            # SMA Meteo Station / Sensorbox unit ID (3–247)
-    sma_poll: float = 5.0
+    # SMA WebBox FTP-Push: WebBox uploads ZIPs to this dir every ~10s with
+    # 15-minute averaged sensor data. Watch the dir, parse new ZIPs, expose
+    # the latest values. (Modbus path didn't survive the firmware's old
+    # profile version — FTP-Push works regardless.)
+    sma_watch_dir: str = "~/sma"
+    sma_poll: float = 10.0
     solis_poll: float = 1.0
     csv_interval: float = 5.0
     csv_dir: str = "./data"
@@ -178,9 +180,8 @@ def _r(v, dp=2):
 # ---------------------------------------------------------------------------
 class Engine:
     def __init__(self):
-        self.sma = SmaReader(CONFIG.sma_host, CONFIG.sma_port,
-                             unit_id=CONFIG.sma_unit,
-                             poll_interval=CONFIG.sma_poll)
+        self.sma = SmaFtpReader(CONFIG.sma_watch_dir,
+                                scan_interval=CONFIG.sma_poll)
         self.csv = CsvWriter(CONFIG.csv_dir)
 
         self.latest: Optional[Sample] = None
@@ -452,11 +453,10 @@ def main():
     p.add_argument("--host", default=CONFIG.host)
     p.add_argument("--port", type=int, default=CONFIG.port)
     p.add_argument("--solis-url", default=CONFIG.solis_url)
-    p.add_argument("--sma-host", default=CONFIG.sma_host)
-    p.add_argument("--sma-port", type=int, default=CONFIG.sma_port)
-    p.add_argument("--sma-unit", type=int, default=CONFIG.sma_unit,
-                   help="SMA Modbus unit ID (3–247 reaches Meteo Station / Sensorbox)")
-    p.add_argument("--sma-poll", type=float, default=CONFIG.sma_poll)
+    p.add_argument("--sma-watch-dir", default=CONFIG.sma_watch_dir,
+                   help="Directory to watch for SMA WebBox FTP-Push ZIPs")
+    p.add_argument("--sma-poll", type=float, default=CONFIG.sma_poll,
+                   help="Watch-dir scan interval (s)")
     p.add_argument("--solis-poll", type=float, default=CONFIG.solis_poll)
     p.add_argument("--csv-interval", type=float, default=CONFIG.csv_interval)
     p.add_argument("--csv-dir", default=CONFIG.csv_dir)

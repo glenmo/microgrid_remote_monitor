@@ -18,10 +18,8 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 HOST="0.0.0.0"
 PORT="8901"
 SOLIS_URL="http://rubberduck.local:5000/api/solis/data"
-SMA_HOST="192.168.55.126"
-SMA_PORT="502"
-SMA_UNIT="3"
-SMA_POLL="5.0"
+SMA_WATCH_DIR="${HOME}/sma"
+SMA_POLL="10.0"
 SOLIS_POLL="1.0"
 CSV_INTERVAL="5.0"
 CSV_DIR="${APP_DIR}/data"
@@ -35,9 +33,7 @@ while [[ $# -gt 0 ]]; do
     --host)          HOST="$2";          shift 2 ;;
     --port)          PORT="$2";          shift 2 ;;
     --solis-url)     SOLIS_URL="$2";     shift 2 ;;
-    --sma-host)      SMA_HOST="$2";      shift 2 ;;
-    --sma-port)      SMA_PORT="$2";      shift 2 ;;
-    --sma-unit)      SMA_UNIT="$2";      shift 2 ;;
+    --sma-watch-dir) SMA_WATCH_DIR="$2"; shift 2 ;;
     --sma-poll)      SMA_POLL="$2";      shift 2 ;;
     --solis-poll)    SOLIS_POLL="$2";    shift 2 ;;
     --csv-interval)  CSV_INTERVAL="$2";  shift 2 ;;
@@ -54,7 +50,7 @@ done
 
 echo ">> App dir:               $APP_DIR"
 echo ">> Solis upstream:        $SOLIS_URL"
-echo ">> SMA WebBox:            $SMA_HOST:$SMA_PORT"
+echo ">> SMA watch dir:         $SMA_WATCH_DIR"
 echo ">> Listen:                $HOST:$PORT"
 echo ">> CSV dir:               $CSV_DIR"
 echo ">> Site:                  $SITE_NAME"
@@ -87,9 +83,7 @@ ExecStart=${APP_DIR}/venv/bin/python ${APP_DIR}/app.py \\
     --host ${HOST} \\
     --port ${PORT} \\
     --solis-url ${SOLIS_URL} \\
-    --sma-host ${SMA_HOST} \\
-    --sma-port ${SMA_PORT} \\
-    --sma-unit ${SMA_UNIT} \\
+    --sma-watch-dir ${SMA_WATCH_DIR} \\
     --sma-poll ${SMA_POLL} \\
     --solis-poll ${SOLIS_POLL} \\
     --csv-interval ${CSV_INTERVAL} \\
@@ -119,6 +113,11 @@ else
 fi
 echo ">> Open: $URL"
 echo
-echo "If irradiance/temps read zero or wrong, the SMA Modbus register"
-echo "addresses may need updating. Run the probe:"
-echo "  cd $APP_DIR && ./venv/bin/python sma_reader.py --probe --sma-host $SMA_HOST"
+echo "If SMA fields read null, check that WebBox FTP-Push is configured:"
+echo "  WebBox UI → Settings → Data trans. → Use FTP-Push: yes"
+echo "  FTP server: <desky's IP on the .55 network>"
+echo "  Upload directory: sma   (must match --sma-watch-dir leaf name)"
+echo "  Username/password: matching a writable user on this machine"
+echo
+echo "Test the parser against an existing zip:"
+echo "  ./venv/bin/python sma_ftp.py --parse $SMA_WATCH_DIR/<some-file>.zip"
