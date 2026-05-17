@@ -306,6 +306,25 @@ function fmt(v, dp) {
     return Number(v).toFixed(dp);
 }
 
+// Cache-busted fetch — defeats Chrome's heuristic caching of GET JSON.
+function noCacheFetch(url) {
+    const sep = url.includes('?') ? '&' : '?';
+    return fetch(url + sep + '_=' + Date.now(), { cache: 'no-store' });
+}
+
+// Track latest server push timestamp so "Xs ago" can tick every second
+// without needing extra network round-trips.
+let lastPushTs = null;
+function updateLastPushText() {
+    const el = document.getElementById('lastPush');
+    if (!el) return;
+    if (!lastPushTs) { el.textContent = '--'; el.style.color = ''; return; }
+    const t = new Date(lastPushTs);
+    const ageS = Math.max(0, Math.floor((Date.now() - t.getTime()) / 1000));
+    el.textContent = `${t.toLocaleTimeString('en-AU')} · ${ageS}s ago`;
+    el.style.color = ageS > 180 ? '#ef4444' : (ageS > 90 ? '#f59e0b' : '');
+}
+
 // SoC Gauge
 function getSocColor(soc) {
     if (soc >= 70) return '#22c55e';
@@ -370,7 +389,7 @@ setInterval(() => {
 
 // ---- Solis data ----
 function fetchSolisData() {
-    fetch('/api/data')
+    noCacheFetch('/api/data')
         .then(r => r.json())
         .then(d => {
             if (!d || Object.keys(d).length < 2) { document.getElementById('solisDot').className = 'status-dot stale'; return; }
@@ -396,7 +415,7 @@ function fetchSolisData() {
 }
 
 function fetchSolisHistory() {
-    fetch('/api/history')
+    noCacheFetch('/api/history')
         .then(r => r.json())
         .then(arr => {
             // Server history is array of objects [{timestamp, soc, pv_power, ...}, ...]
@@ -413,7 +432,7 @@ function fetchSolisHistory() {
 
 // ---- SP Pro data ----
 function fetchSpProData() {
-    fetch('/api/sppro/data')
+    noCacheFetch('/api/sppro/data')
         .then(r => r.json())
         .then(d => {
             if (!d || Object.keys(d).length < 2) { document.getElementById('spproDot').className = 'status-dot stale'; return; }
@@ -441,7 +460,7 @@ function fetchSpProData() {
 }
 
 function fetchSpProHistory() {
-    fetch('/api/sppro/history')
+    noCacheFetch('/api/sppro/history')
         .then(r => r.json())
         .then(arr => {
             const labels = arr.map(e => e.timestamp ? e.timestamp.slice(11, 16) : '');
@@ -457,10 +476,11 @@ function fetchSpProHistory() {
 
 // ---- Status / last push ----
 function fetchStatus() {
-    fetch('/api/status')
+    noCacheFetch('/api/status')
         .then(r => r.json())
         .then(s => {
-            document.getElementById('lastPush').textContent = s.last_push || 'never';
+            if (s && s.last_push) { lastPushTs = s.last_push; }
+            updateLastPushText();
         })
         .catch(() => {});
 }
@@ -474,6 +494,7 @@ setInterval(fetchSpProData, 30000);
 setInterval(fetchSolisHistory, 120000);
 setInterval(fetchSpProHistory, 120000);
 setInterval(fetchStatus, 60000);
+setInterval(updateLastPushText, 1000);  // tick "Xs ago" each second
 </script>
 </body>
 </html>
