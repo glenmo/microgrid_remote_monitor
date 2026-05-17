@@ -228,6 +228,46 @@ class SolisModbusReader:
         self._stop_event = threading.Event()
         self._thread = None
 
+        # Pre-compute batches so poll_once doesn't recompute every cycle.
+        self._batches = self._build_batches(REGISTER_MAP, max_count=50, max_gap=20)
+        batch_sizes = [c for _s, c, _r in self._batches]
+        log.info(
+            f"Solis: register map split into {len(self._batches)} batches "
+            f"(sizes={batch_sizes})"
+        )
+
+    @staticmethod
+    def _build_batches(register_map, max_count=50, max_gap=20):
+        """Group adjacent registers into batches readable as a single Modbus frame.
+
+        Returns a list of ``(start_addr, total_count, [register_entries])`` tuples.
+        Each batch covers a contiguous (or near-contiguous) range so we can read
+        it all in one ``read_input_registers`` call — Solis recommends max 50
+        registers per frame, so we cap at that.
+        """
+        sorted_regs = sorted(register_map, key=lambda r: r[0])
+        batches = []
+        current = []
+        for reg in sorted_regs:
+            addr, count = reg[0], reg[1]
+            end = addr + count
+            if not current:
+                current = [reg]
+                continue
+            first = current[0][0]
+            current_end = max(r[0] + r[1] for r in current)
+            if end - first <= max_count and addr - current_end <= max_gap:
+                current.append(reg)
+            else:
+                batches.append(current)
+                current = [reg]
+        if current:
+            batches.append(current)
+        return [
+            (b[0][0], max(r[0] + r[1] for r in b) - b[0][0], b)
+            for b in batches
+        ]
+
     def connect(self):
         """Establish Modbus TCP connection (skipped if using shared client)."""
         if self._shared_client is not None:
@@ -334,14 +374,10 @@ class SolisModbusReader:
         return None
 
     def poll_once(self):
-        """Read all registers from the inverter."""
+        """Read all registers from the inverter, in pre-grouped batches."""
         new_data = {}
         new_raw = {}
         success = True
-
-        # Read each register entry individually or in small groups
-        # The Solis spec recommends max 50 registers per frame with >300ms gap
-        sorted_regs = sorted(REGISTER_MAP, key=lambda r: r[0])
 
         # Acquire the shared client lock if we're sharing a connection.
         # This prevents the Eastron reader from using the TCP socket at the
@@ -351,25 +387,24 @@ class SolisModbusReader:
             bus_lock.acquire()
 
         try:
-            # Read register by register (or small groups for U32/S32).
-            # Bail on the first failed register — a single failure usually
-            # means the TCP stream is desynced or the inverter is timing out,
-            # and powering through ~50 more failing reads only burns the
-            # 5-second-per-read timeout budget × 50, which keeps the poll
-            # thread out of the watchdog for minutes at a time.
-            for reg_addr, reg_count, name, dtype, unit, scale, desc in sorted_regs:
-                registers = self._read_registers_batch(reg_addr, reg_count)
-                if registers is not None and len(registers) == reg_count:
-                    value = self._decode_value(registers, 0, reg_count, dtype, scale)
+            # Batched reads — one Modbus frame per cluster of contiguous registers,
+            # instead of 50+ individual single-register frames. This is ~10× faster
+            # and respects the Solis-recommended 300ms gap between frames.
+            for batch_start, batch_count, regs_in_batch in self._batches:
+                block = self._read_registers_batch(batch_start, batch_count)
+                if block is None or len(block) != batch_count:
+                    success = False
+                    break  # next poll cycle will reconnect
+
+                for reg_addr, reg_count, name, dtype, _unit, scale, _desc in regs_in_batch:
+                    offset = reg_addr - batch_start
+                    value = self._decode_value(block, offset, reg_count, dtype, scale)
                     if value is not None:
                         new_data[name] = value
-                        new_raw[name] = registers[0] if reg_count == 1 else list(registers)
-                else:
-                    success = False
-                    break  # next poll cycle will reconnect (see _read_registers_batch)
+                        new_raw[name] = block[offset] if reg_count == 1 else list(block[offset:offset + reg_count])
 
-                # Small delay between reads (Solis needs >300ms between frames)
-                time.sleep(0.05)
+                # Solis spec: minimum 300ms between frames.
+                time.sleep(0.3)
         finally:
             if bus_lock:
                 bus_lock.release()
@@ -423,10 +458,12 @@ class SolisModbusReader:
         if not success:
             self.read_errors += 1
 
-        # Update shared state
+        # Update shared state. Merge instead of replace — if one batch failed
+        # this cycle, we still keep the previous values for fields in that
+        # batch rather than wiping them to blank on the dashboard.
         with self.lock:
-            self.data = new_data
-            self.raw_data = new_raw
+            self.data.update(new_data)
+            self.raw_data.update(new_raw)
             self.last_read_time = now
 
             # Append to history (once per minute)
