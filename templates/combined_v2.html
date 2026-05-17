@@ -587,27 +587,47 @@ function renderTotals(spp, sppStatus, sol, solStatus) {
     setText('t-pv-today-solis', solOk ? `${fmt(solT, 1)} kWh` : 'offline');
 }
 
+// Cache-busted fetch — defeats Chrome's heuristic caching of GET JSON.
+function noCacheFetch(url) {
+    const sep = url.includes('?') ? '&' : '?';
+    return fetch(url + sep + '_=' + Date.now(), { cache: 'no-store' });
+}
+
+// Track the latest server last_read so the "Xs ago" tick can update each second
+// without needing another network round-trip.
+let lastReadTs = null;
+function updateLastReadText() {
+    const el = document.getElementById('last-read');
+    if (!el) return;
+    if (!lastReadTs) { el.textContent = 'Last: —'; el.style.color = ''; return; }
+    const ageS = Math.max(0, Math.floor((Date.now() - new Date(lastReadTs).getTime()) / 1000));
+    const timeStr = new Date(lastReadTs).toLocaleTimeString('en-AU');
+    el.textContent = `Last: ${timeStr} · ${ageS}s ago`;
+    el.style.color = ageS > 60 ? '#ef4444' : (ageS > 30 ? '#f59e0b' : '');
+}
+
 async function fetchAll() {
     try {
         const [spp, sppStatus, sol, solStatus] = await Promise.all([
-            fetch('/api/sppro/data').then(r=>r.json()).catch(()=>({})),
-            fetch('/api/sppro/status').then(r=>r.json()).catch(()=>({})),
-            fetch('/api/solis/data').then(r=>r.json()).catch(()=>({})),
-            fetch('/api/solis/status').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/sppro/data').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/sppro/status').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/solis/data').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/solis/status').then(r=>r.json()).catch(()=>({})),
         ]);
         renderSPPro(spp, sppStatus);
         renderSolis(sol, solStatus);
         renderTotals(spp, sppStatus, sol, solStatus);
         const ts = [sppStatus.last_read, solStatus.last_read].filter(Boolean).sort().pop();
-        if (ts) setText('last-read', `Last: ${new Date(ts).toLocaleTimeString('en-AU')}`);
+        if (ts) { lastReadTs = ts; }
+        updateLastReadText();
     } catch (e) { console.warn(e); }
 }
 
 async function fetchHistory() {
     try {
         const [sppH, solH] = await Promise.all([
-            fetch('/api/sppro/history').then(r=>r.json()).catch(()=>({})),
-            fetch('/api/solis/history').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/sppro/history').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/solis/history').then(r=>r.json()).catch(()=>({})),
         ]);
         // SoC chart â full 7-day history
         const socLabels = (sppH.timestamps?.length || 0) >= (solH.timestamps?.length || 0)
@@ -646,6 +666,7 @@ async function fetchHistory() {
 fetchAll(); fetchHistory();
 setInterval(fetchAll, 5000);
 setInterval(fetchHistory, 60000);
+setInterval(updateLastReadText, 1000);   // tick "Xs ago" each second
 </script>
 </body>
 </html>
