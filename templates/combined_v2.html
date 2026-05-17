@@ -421,10 +421,15 @@ const pvChart = document.getElementById('pvChart') && new Chart(document.getElem
 });
 
 function renderSPPro(d, status) {
-    const dot = document.getElementById('sppro-dot');
     const conn = document.getElementById('sppro-conn');
-    if (status?.connected) { dot.className = 'status-dot ok'; conn.innerHTML = `<span class="status-dot ok"></span>SP Pro ${status.host}`; }
-    else                   { dot.className = 'status-dot err'; conn.innerHTML = `<span class="status-dot err"></span>SP Pro disconnected`; }
+    // Rebuild the entire chip (dot + label) including the id so future renders
+    // can still find #sppro-dot. The previous code stripped the id off on first
+    // render and then crashed forever after.
+    if (status?.connected) {
+        conn.innerHTML = `<span class="status-dot ok" id="sppro-dot"></span>SP Pro ${status.host || ''}`;
+    } else {
+        conn.innerHTML = `<span class="status-dot err" id="sppro-dot"></span>SP Pro disconnected`;
+    }
 
     if (!d || d.error) { setText('sppro-mode', 'Not polled by this service'); return; }
 
@@ -472,10 +477,12 @@ function renderSPPro(d, status) {
 }
 
 function renderSolis(d, status) {
-    const dot = document.getElementById('solis-dot');
     const conn = document.getElementById('solis-conn');
-    if (status?.connected) { dot.className = 'status-dot ok'; conn.innerHTML = `<span class="status-dot ok"></span>Solis ${status.inverter_ip || status.host}`; }
-    else                   { dot.className = 'status-dot err'; conn.innerHTML = `<span class="status-dot err"></span>Solis disconnected`; }
+    if (status?.connected) {
+        conn.innerHTML = `<span class="status-dot ok" id="solis-dot"></span>Solis ${status.inverter_ip || status.host || ''}`;
+    } else {
+        conn.innerHTML = `<span class="status-dot err" id="solis-dot"></span>Solis disconnected`;
+    }
 
     if (!d || d.error) { setText('solis-mode', 'Not available'); return; }
 
