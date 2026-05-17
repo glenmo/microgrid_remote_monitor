@@ -236,6 +236,13 @@ class SolisModbusReader:
             if self.connected:
                 log.info(f"Solis: Using shared connection to {self.inverter_ip}:{self.inverter_port}")
             return
+        # Close any stale client first to avoid leaking sockets across reconnects.
+        if self.client is not None:
+            try:
+                self.client.close()
+            except Exception:
+                pass
+            self.client = None
         try:
             self.client = ModbusTcpClient(
                 host=self.inverter_ip,
@@ -278,6 +285,10 @@ class SolisModbusReader:
             )
             if isinstance(result, ModbusIOException) or result.isError():
                 log.warning(f"Modbus read error at register {start}: {result}")
+                # Mark socket as bad so next call forces a reconnect. This
+                # covers transaction_id mismatches and similar mid-stream
+                # corruption where pymodbus doesn't raise.
+                self.connected = False
                 return None
             return result.registers
         except Exception as e:
@@ -419,12 +430,41 @@ class SolisModbusReader:
                     self.history[key].append(new_data.get(key, 0))
 
     def _poll_loop(self):
-        """Background polling loop."""
+        """Background polling loop with a staleness watchdog.
+
+        If ``last_read_time`` hasn't advanced for ``max(30s, 3 * poll_interval)``,
+        force a disconnect/reconnect — this catches silent failure modes where
+        every read returns an error but no exception escapes (e.g. transaction_id
+        mismatch, half-open TCP socket).
+        """
+        last_forced_reconnect = datetime.now()
+        stale_threshold_s = max(30.0, 3.0 * self.poll_interval)
+        reconnect_cooldown_s = max(30.0, 2.0 * self.poll_interval)
+
         while not self._stop_event.is_set():
             try:
                 self.poll_once()
             except Exception as e:
                 log.error(f"Poll error: {e}")
+
+            # Watchdog — runs every tick, but only forces a reconnect when stale
+            # AND the cooldown since the last forced reconnect has elapsed.
+            if self.last_read_time is not None and not self._shared_client:
+                now = datetime.now()
+                age_s = (now - self.last_read_time).total_seconds()
+                cooldown_s = (now - last_forced_reconnect).total_seconds()
+                if age_s > stale_threshold_s and cooldown_s > reconnect_cooldown_s:
+                    log.warning(
+                        f"Solis watchdog: last_read is {age_s:.0f}s stale "
+                        f"(> {stale_threshold_s:.0f}s) — forcing reconnect"
+                    )
+                    try:
+                        self.disconnect()
+                    except Exception as e:
+                        log.warning(f"Solis watchdog: disconnect raised: {e}")
+                    self.connect()
+                    last_forced_reconnect = now
+
             self._stop_event.wait(self.poll_interval)
 
     def start(self):

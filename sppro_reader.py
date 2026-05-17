@@ -106,6 +106,13 @@ class SPProModbusReader:
 
     def connect(self):
         """Establish Modbus TCP connection to the SP Pro."""
+        # Close any stale client first to avoid leaking sockets across reconnects.
+        if self.client is not None:
+            try:
+                self.client.close()
+            except Exception:
+                pass
+            self.client = None
         try:
             self.client = ModbusTcpClient(
                 host=self.ip,
@@ -124,7 +131,11 @@ class SPProModbusReader:
     def disconnect(self):
         """Close the Modbus connection."""
         if self.client:
-            self.client.close()
+            try:
+                self.client.close()
+            except Exception:
+                pass
+            self.client = None
             self.connected = False
             log.info("Disconnected from SP Pro")
 
@@ -144,6 +155,9 @@ class SPProModbusReader:
             )
             if isinstance(result, ModbusIOException) or result.isError():
                 log.debug(f"SP Pro read error: slave={slave_id} addr={address}: {result}")
+                # Mark socket as bad so next read forces a reconnect. Covers
+                # mid-stream corruption where pymodbus doesn't raise.
+                self.connected = False
                 return None
             raw = result.registers[0]
             # Convert to signed 16-bit
@@ -259,8 +273,20 @@ class SPProModbusReader:
                     self.history[key].append(combined.get(key, 0))
 
     def _poll_loop(self):
-        """Background polling loop with backoff on connection failure."""
+        """Background polling loop with backoff and a staleness watchdog.
+
+        Existing behaviour: exponential backoff (capped at 60s) when the client
+        thinks it's disconnected.
+
+        New: if ``last_read_time`` hasn't advanced for max(30s, 3*poll_interval),
+        force a disconnect/reconnect. This catches silent failure modes where
+        reads error out without setting connected=False.
+        """
         retry_delay = self.poll_interval
+        last_forced_reconnect = datetime.now()
+        stale_threshold_s = max(30.0, 3.0 * self.poll_interval)
+        reconnect_cooldown_s = max(30.0, 2.0 * self.poll_interval)
+
         while not self._stop_event.is_set():
             try:
                 self.poll_once()
@@ -273,6 +299,25 @@ class SPProModbusReader:
             except Exception as e:
                 log.error(f"SP Pro poll error: {e}")
                 retry_delay = min(retry_delay * 2, 60)
+
+            # Watchdog — force a reconnect if last_read is too stale.
+            if self.last_read_time is not None:
+                now = datetime.now()
+                age_s = (now - self.last_read_time).total_seconds()
+                cooldown_s = (now - last_forced_reconnect).total_seconds()
+                if age_s > stale_threshold_s and cooldown_s > reconnect_cooldown_s:
+                    log.warning(
+                        f"SP Pro watchdog: last_read is {age_s:.0f}s stale "
+                        f"(> {stale_threshold_s:.0f}s) — forcing reconnect"
+                    )
+                    try:
+                        self.disconnect()
+                    except Exception as e:
+                        log.warning(f"SP Pro watchdog: disconnect raised: {e}")
+                    self.connect()
+                    last_forced_reconnect = now
+                    retry_delay = self.poll_interval  # try a fresh full-speed cycle
+
             self._stop_event.wait(retry_delay)
 
     def start(self):
