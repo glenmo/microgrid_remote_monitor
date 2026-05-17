@@ -114,10 +114,13 @@ class SPProModbusReader:
                 pass
             self.client = None
         try:
+            # 2s timeout — short enough that the watchdog can rescue a stuck
+            # poll thread within ~30s rather than minutes (see same change in
+            # app.py for the Solis client).
             self.client = ModbusTcpClient(
                 host=self.ip,
                 port=self.port,
-                timeout=5,
+                timeout=2,
             )
             self.connected = self.client.connect()
             if self.connected:
@@ -170,12 +173,18 @@ class SPProModbusReader:
             return None
 
     def _read_slave(self, slave_id, register_map):
-        """Read all registers for one slave ID and return a dict of scaled values."""
+        """Read all registers for one slave ID and return a dict of scaled values.
+
+        Bails on the first failed register — see the same pattern in
+        ``app.py``'s Solis reader for why (long timeouts × many failed reads
+        would otherwise stall the poll thread for minutes).
+        """
         readings = {}
         for address, name, unit, scale in register_map:
             raw = self._read_register(address, slave_id)
-            if raw is not None:
-                readings[name] = round(raw * scale, 2)
+            if raw is None:
+                break  # next poll cycle will reconnect via self.connected=False
+            readings[name] = round(raw * scale, 2)
             time.sleep(0.05)  # small delay between reads
         return readings
 

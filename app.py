@@ -244,10 +244,13 @@ class SolisModbusReader:
                 pass
             self.client = None
         try:
+            # 2s timeout — Solis Modbus stack on this inverter sometimes drops
+            # responses entirely. A short timeout lets the watchdog rescue us
+            # before the poll thread is stuck for minutes chaining failed reads.
             self.client = ModbusTcpClient(
                 host=self.inverter_ip,
                 port=self.inverter_port,
-                timeout=5,
+                timeout=2,
             )
             self.connected = self.client.connect()
             if self.connected:
@@ -348,7 +351,12 @@ class SolisModbusReader:
             bus_lock.acquire()
 
         try:
-            # Read register by register (or small groups for U32/S32)
+            # Read register by register (or small groups for U32/S32).
+            # Bail on the first failed register — a single failure usually
+            # means the TCP stream is desynced or the inverter is timing out,
+            # and powering through ~50 more failing reads only burns the
+            # 5-second-per-read timeout budget × 50, which keeps the poll
+            # thread out of the watchdog for minutes at a time.
             for reg_addr, reg_count, name, dtype, unit, scale, desc in sorted_regs:
                 registers = self._read_registers_batch(reg_addr, reg_count)
                 if registers is not None and len(registers) == reg_count:
@@ -358,6 +366,7 @@ class SolisModbusReader:
                         new_raw[name] = registers[0] if reg_count == 1 else list(registers)
                 else:
                     success = False
+                    break  # next poll cycle will reconnect (see _read_registers_batch)
 
                 # Small delay between reads (Solis needs >300ms between frames)
                 time.sleep(0.05)
