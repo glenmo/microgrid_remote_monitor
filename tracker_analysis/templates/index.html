@@ -161,9 +161,12 @@
 
   <!-- ============ Detail tiles ============ -->
   <section class="detail-row">
+    <div class="tile"><div class="label">Pyranometer</div><div class="value" id="t-pyra">—</div></div>
     <div class="tile"><div class="label">Module Temp</div><div class="value" id="t-mod">—</div></div>
     <div class="tile"><div class="label">Ambient Temp</div><div class="value" id="t-amb">—</div></div>
     <div class="tile"><div class="label">Wind</div><div class="value" id="t-wind">—</div></div>
+    <div class="tile"><div class="label">Humidity</div><div class="value" id="t-hum">—</div></div>
+    <div class="tile"><div class="label">Air Pressure</div><div class="value" id="t-pres">—</div></div>
     <div class="tile"><div class="label">Clear-sky GHI</div><div class="value" id="t-csg">—</div></div>
     <div class="tile"><div class="label">Total PV (now)</div><div class="value" id="t-total">—</div></div>
     <div class="tile"><div class="label">Total Today</div><div class="value" id="t-today">—</div></div>
@@ -384,9 +387,12 @@
       }
 
       // Detail tiles
+      setText('t-pyra', live.pyranometer_wm2 != null ? fmt(live.pyranometer_wm2, 0, ' W/m²') : '—');
       setText('t-mod',  fmt(live.mod_temp_c, 1, ' °C'));
       setText('t-amb',  fmt(live.amb_temp_c, 1, ' °C'));
       setText('t-wind', fmt(live.wind_ms, 1, ' m/s'));
+      setText('t-hum',  live.humidity_pct != null ? fmt(live.humidity_pct, 1, ' %') : '—');
+      setText('t-pres', live.air_pressure_pa != null ? fmt(live.air_pressure_pa / 100, 1, ' hPa') : '—');
       setText('t-csg',  fmt(live.clear_sky_ghi, 0, ' W/m²'));
       setText('t-total', fmtPower(totalW));
       const totalToday = ['pv1','pv2','pv3','pv4']

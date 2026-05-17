@@ -20,6 +20,7 @@ PORT="8901"
 SOLIS_URL="http://rubberduck.local:5000/api/solis/data"
 SMA_HOST="192.168.55.126"
 SMA_PORT="502"
+SMA_UNIT="3"
 SMA_POLL="5.0"
 SOLIS_POLL="1.0"
 CSV_INTERVAL="5.0"
@@ -27,7 +28,7 @@ CSV_DIR="${APP_DIR}/data"
 LAT="-37.4"
 LON="144.9"
 STRING_KWP="16.965"
-SITE_NAME="Mooramoora Tracker Analysis"
+SITE_NAME="Arctech Solar Tracker with Longi Mono and Bifacial Module Analysis"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,6 +37,7 @@ while [[ $# -gt 0 ]]; do
     --solis-url)     SOLIS_URL="$2";     shift 2 ;;
     --sma-host)      SMA_HOST="$2";      shift 2 ;;
     --sma-port)      SMA_PORT="$2";      shift 2 ;;
+    --sma-unit)      SMA_UNIT="$2";      shift 2 ;;
     --sma-poll)      SMA_POLL="$2";      shift 2 ;;
     --solis-poll)    SOLIS_POLL="$2";    shift 2 ;;
     --csv-interval)  CSV_INTERVAL="$2";  shift 2 ;;
@@ -87,6 +89,7 @@ ExecStart=${APP_DIR}/venv/bin/python ${APP_DIR}/app.py \\
     --solis-url ${SOLIS_URL} \\
     --sma-host ${SMA_HOST} \\
     --sma-port ${SMA_PORT} \\
+    --sma-unit ${SMA_UNIT} \\
     --sma-poll ${SMA_POLL} \\
     --solis-poll ${SOLIS_POLL} \\
     --csv-interval ${CSV_INTERVAL} \\

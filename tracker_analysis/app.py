@@ -40,6 +40,7 @@ class Config:
     solis_url: str = "http://rubberduck.local:5000/api/solis/data"
     sma_host: str = "192.168.55.126"
     sma_port: int = 502
+    sma_unit: int = 3            # SMA Meteo Station / Sensorbox unit ID (3–247)
     sma_poll: float = 5.0
     solis_poll: float = 1.0
     csv_interval: float = 5.0
@@ -47,7 +48,7 @@ class Config:
     lat: float = -37.4
     lon: float = 144.9
     string_kwp: float = 16.965  # 13 × 435W × 3 / 1000
-    site_name: str = "Mooramoora Tracker Analysis"
+    site_name: str = "Arctech Solar Tracker with Longi Mono and Bifacial Module Analysis"
 
 CONFIG = Config()
 
@@ -80,10 +81,13 @@ class Sample:
     pv4_a: Optional[float] = None
     pv4_w: Optional[float] = None
     # Weather
-    poa_wm2: Optional[float] = None
+    poa_wm2: Optional[float] = None        # internal silicon cell (IntSolIrr)
+    pyranometer_wm2: Optional[float] = None  # external pyranometer (ExlSolIrr)
     mod_temp_c: Optional[float] = None
     amb_temp_c: Optional[float] = None
     wind_ms: Optional[float] = None
+    humidity_pct: Optional[float] = None
+    air_pressure_pa: Optional[float] = None
     # Computed
     sun_elev_deg: float = 0.0
     sun_azim_deg: float = 0.0
@@ -108,7 +112,9 @@ class CsvWriter:
         "pv2_v", "pv2_a", "pv2_w",
         "pv3_v", "pv3_a", "pv3_w",
         "pv4_v", "pv4_a", "pv4_w",
-        "poa_wm2", "mod_temp_c", "amb_temp_c", "wind_ms",
+        "poa_wm2", "pyranometer_wm2",
+        "mod_temp_c", "amb_temp_c", "wind_ms",
+        "humidity_pct", "air_pressure_pa",
         "sun_elev_deg", "sun_azim_deg", "tracker_tilt_deg", "clear_sky_ghi",
         "bg_1p_pct", "bg_2p_pct",
         "pr_pv1", "pr_pv2", "pr_pv3", "pr_pv4",
@@ -145,7 +151,9 @@ class CsvWriter:
                 sample.pv2_v, sample.pv2_a, sample.pv2_w,
                 sample.pv3_v, sample.pv3_a, sample.pv3_w,
                 sample.pv4_v, sample.pv4_a, sample.pv4_w,
-                sample.poa_wm2, sample.mod_temp_c, sample.amb_temp_c, sample.wind_ms,
+                sample.poa_wm2, sample.pyranometer_wm2,
+                sample.mod_temp_c, sample.amb_temp_c, sample.wind_ms,
+                sample.humidity_pct, sample.air_pressure_pa,
                 round(sample.sun_elev_deg, 2),
                 round(sample.sun_azim_deg, 2),
                 round(sample.tracker_tilt_deg, 2),
@@ -171,6 +179,7 @@ def _r(v, dp=2):
 class Engine:
     def __init__(self):
         self.sma = SmaReader(CONFIG.sma_host, CONFIG.sma_port,
+                             unit_id=CONFIG.sma_unit,
                              poll_interval=CONFIG.sma_poll)
         self.csv = CsvWriter(CONFIG.csv_dir)
 
@@ -219,10 +228,13 @@ class Engine:
 
         # Weather from SMA
         sma_data = self.sma.get_data() or {}
-        s.poa_wm2     = sma_data.get("radiation_wm2")
-        s.mod_temp_c  = sma_data.get("module_temp_c")
-        s.amb_temp_c  = sma_data.get("ambient_temp_c")
-        s.wind_ms     = sma_data.get("wind_speed_ms")
+        s.poa_wm2          = sma_data.get("radiation_wm2")        # internal silicon cell
+        s.pyranometer_wm2  = sma_data.get("pyranometer_wm2")      # external pyranometer
+        s.mod_temp_c       = sma_data.get("module_temp_c")
+        s.amb_temp_c       = sma_data.get("ambient_temp_c")
+        s.wind_ms          = sma_data.get("wind_speed_ms")
+        s.humidity_pct     = sma_data.get("humidity_pct")
+        s.air_pressure_pa  = sma_data.get("air_pressure_pa")
 
         # Sun position
         elev, azim = sun_position(now.astimezone(timezone.utc), CONFIG.lat, CONFIG.lon)
@@ -369,10 +381,13 @@ def _sample_to_dict(s: Sample) -> dict:
         "pv2": {"v": s.pv2_v, "a": s.pv2_a, "w": s.pv2_w, "pr": s.pr_pv2},
         "pv3": {"v": s.pv3_v, "a": s.pv3_a, "w": s.pv3_w, "pr": s.pr_pv3},
         "pv4": {"v": s.pv4_v, "a": s.pv4_a, "w": s.pv4_w, "pr": s.pr_pv4},
-        "poa_wm2":   s.poa_wm2,
-        "mod_temp_c": s.mod_temp_c,
-        "amb_temp_c": s.amb_temp_c,
-        "wind_ms":   s.wind_ms,
+        "poa_wm2":         s.poa_wm2,
+        "pyranometer_wm2": s.pyranometer_wm2,
+        "mod_temp_c":      s.mod_temp_c,
+        "amb_temp_c":      s.amb_temp_c,
+        "wind_ms":         s.wind_ms,
+        "humidity_pct":    s.humidity_pct,
+        "air_pressure_pa": s.air_pressure_pa,
         "sun_elev_deg":    round(s.sun_elev_deg, 2),
         "sun_azim_deg":    round(s.sun_azim_deg, 2),
         "tracker_tilt_deg": round(s.tracker_tilt_deg, 2),
@@ -439,6 +454,8 @@ def main():
     p.add_argument("--solis-url", default=CONFIG.solis_url)
     p.add_argument("--sma-host", default=CONFIG.sma_host)
     p.add_argument("--sma-port", type=int, default=CONFIG.sma_port)
+    p.add_argument("--sma-unit", type=int, default=CONFIG.sma_unit,
+                   help="SMA Modbus unit ID (3–247 reaches Meteo Station / Sensorbox)")
     p.add_argument("--sma-poll", type=float, default=CONFIG.sma_poll)
     p.add_argument("--solis-poll", type=float, default=CONFIG.solis_poll)
     p.add_argument("--csv-interval", type=float, default=CONFIG.csv_interval)
