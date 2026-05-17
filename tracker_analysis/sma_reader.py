@@ -360,6 +360,112 @@ def probe(host: str, port: int = 502, unit_id: int = DEFAULT_UNIT_ID,
           "file and restart.")
 
 
+def discover_devices(host: str, port: int = 502, max_slots: int = 20):
+    """Read the WebBox's device-assignment table at unit_id=1.
+
+    Per SMA Modbus Profile § 5.2, the WebBox exposes a table starting at
+    address 42109 showing every connected SMA device's Device-ID, serial
+    number, and assigned Modbus Unit ID. Reading this from unit 1 tells
+    us exactly which unit IDs the WebBox has bound to which devices —
+    no UI navigation needed.
+
+    Device-ID lookup (from § 7.1):
+        81  = Sunny Sensorbox
+        232 = SMA Meteo Station
+        47  = Sunny WebBox
+        # … many others, see PDF § 7.1
+    """
+    print(f"Reading device-assignment table from WebBox at {host}:{port} "
+          f"unit_id=1, slots 1..{max_slots}")
+    print()
+    print(f"  {'slot':>4}  {'addr':>5}  {'Device-ID':>9}  {'Serial':>12}  "
+          f"{'Unit-ID':>8}  Notes")
+    print("  " + "-" * 70)
+
+    client = ModbusTcpClient(host=host, port=port, timeout=3)
+    if not client.connect():
+        print("  ✗ connection refused")
+        return
+    try:
+        for slot in range(1, max_slots + 1):
+            base = 42109 + 4 * (slot - 1)
+            # Read 4 contiguous registers: DevID + Serial(2) + UnitID
+            try:
+                try:
+                    r = client.read_holding_registers(address=base, count=4,
+                                                      device_id=1)
+                except TypeError:
+                    r = client.read_holding_registers(address=base, count=4,
+                                                      slave=1)
+                if isinstance(r, ModbusIOException) or r.isError():
+                    print(f"  {slot:>4}  {base:>5}  ← error: {r}")
+                    continue
+                regs = r.registers
+                if len(regs) != 4:
+                    continue
+                dev_id = regs[0]
+                serial = (regs[1] << 16) | regs[2]
+                unit_id = regs[3]
+
+                # Skip empty slots (Device-ID 0 or 0xFFFF)
+                if dev_id == 0 or dev_id == 0xFFFF:
+                    continue
+
+                # Identify common device types
+                dev_name = {
+                    47:  "Sunny WebBox",
+                    81:  "Sunny Sensorbox",
+                    232: "SMA Meteo Station",
+                }.get(dev_id, "unknown")
+
+                # Note unit ID issues
+                if unit_id == 255:
+                    note = "⚠ unassigned (255 = NaN); needs setting"
+                elif unit_id == 0 or unit_id == 0xFFFF:
+                    note = "empty slot"
+                elif 3 <= unit_id <= 247:
+                    note = "OK — reachable via Modbus"
+                else:
+                    note = f"⚠ out-of-range unit ID"
+
+                print(f"  {slot:>4}  {base:>5}  {dev_id:>9}  {serial:>12}  "
+                      f"{unit_id:>8}  {dev_name} — {note}")
+            except Exception as e:
+                print(f"  {slot:>4}  {base:>5}  ← exception: {e}")
+    finally:
+        client.close()
+    print()
+    print("  Match the printed serials against your WebBox UI device names")
+    print("  (e.g. SENS0700:31621 should appear as serial 31621).")
+
+
+def set_device_unit_id(host: str, port: int, slot: int, new_unit_id: int):
+    """Write a new Unit ID to device slot N's UnitID register (42112 + 4*(N-1)).
+
+    Per SMA Modbus Profile § 5.2, this register is RW. Use Write Single
+    Register (FC 06). Valid unit IDs are 3..247.
+    """
+    if not (3 <= new_unit_id <= 247):
+        print(f"  ✗ Unit ID {new_unit_id} out of range (must be 3..247)")
+        return
+    addr = 42112 + 4 * (slot - 1)
+    client = ModbusTcpClient(host=host, port=port, timeout=3)
+    if not client.connect():
+        print("  ✗ connection refused")
+        return
+    try:
+        try:
+            r = client.write_register(address=addr, value=new_unit_id, device_id=1)
+        except TypeError:
+            r = client.write_register(address=addr, value=new_unit_id, slave=1)
+        if isinstance(r, ModbusIOException) or r.isError():
+            print(f"  ✗ write failed: {r}")
+        else:
+            print(f"  ✓ slot {slot} (addr {addr}) → Unit ID {new_unit_id}")
+    finally:
+        client.close()
+
+
 def _setup_logging(verbose: bool = False):
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
@@ -376,6 +482,16 @@ def main():
                    help="Scan register space and print plausible values")
     p.add_argument("--probe-start", type=int, default=34600)
     p.add_argument("--probe-end", type=int, default=34700)
+    p.add_argument("--discover", action="store_true",
+                   help="Read the WebBox device-assignment table (unit 1, 42109+) "
+                        "to find each device's serial and current Unit ID")
+    p.add_argument("--discover-slots", type=int, default=20,
+                   help="Number of slots to scan in --discover mode (default 20)")
+    p.add_argument("--set-unit-id", type=int, metavar="UNIT",
+                   help="Write a new Unit ID (3..247) to a device slot. "
+                        "Use with --slot to choose which slot.")
+    p.add_argument("--slot", type=int, default=1,
+                   help="Device slot number for --set-unit-id (1-based)")
     p.add_argument("--once", action="store_true",
                    help="Single read using configured registers")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -386,6 +502,15 @@ def main():
     if args.probe:
         probe(args.sma_host, args.sma_port, args.unit_id,
               args.probe_start, args.probe_end)
+        return
+
+    if args.discover:
+        discover_devices(args.sma_host, args.sma_port, args.discover_slots)
+        return
+
+    if args.set_unit_id is not None:
+        set_device_unit_id(args.sma_host, args.sma_port,
+                           args.slot, args.set_unit_id)
         return
 
     if args.once:
