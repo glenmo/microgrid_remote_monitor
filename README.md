@@ -175,8 +175,8 @@ SwitchDin (Stormcloud cloud API — optional)
 | `GET /api/data` | Latest Solis data (legacy alias) |
 | `GET /api/history` | Solis 24 h history (legacy alias) |
 | `GET /api/status` | Solis connection status |
-| `GET /api/solis/data` | Latest Solis data (VPS only — rubberduck still uses `/api/data`) |
-| `GET /api/solis/history` | Solis 24 h history |
+| `GET /api/solis/data` | Latest Solis data (both rubberduck and pignus) |
+| `GET /api/solis/history` | Solis 24 h history (column format — includes `timestamps`, `battery_soc`, `pv_total_power`, `battery_power`, `active_power`, `grid_frequency`, `pv1_power`..`pv4_power`) |
 | `GET /api/solis/status` | Solis connection status |
 | `GET /api/sppro/data` | Latest SP Pro data |
 | `GET /api/sppro/history` | SP Pro 24 h history |
@@ -188,27 +188,29 @@ SwitchDin (Stormcloud cloud API — optional)
 | `POST /api/push` | (VPS only) Receive Pi pushes — requires `X-API-Key` header |
 
 
-All `/api/*` responses set `Cache-Control: no-store` so neither browsers
-nor proxies serve stale JSON.
+Cache-busting is done client-side: every fetch appends
+`?_=<Date.now()>` and sends `cache: 'no-store'`. The Flask endpoints
+themselves don't set `Cache-Control` headers — defeating browser cache
+from the request side has been sufficient.
 
 
 ## Dashboard behaviour
 
 The dashboard polls `/api/sppro/{data,status}` and `/api/solis/{data,status}`
 every 5 s, and `/api/*/history` every 60 s. To survive Chromium-on-Pi
-quirks it has several layers of self-defence:
+quirks and Flask-JSON caching it has several layers of self-defence:
 
-- **Cache-busting** — every fetch appends `?_=<timestamp>` and sends
-  `cache: 'no-store'`.
-- **Per-device age indicator** — `(Xs ago)` next to each device name in
-  the header, driven by the local clock. Turns orange after 30 s, red
-  after 2 min.
-- **Stale-value preservation** — when a field is missing in the latest
-  response, the previously rendered value is kept on screen (dimmed)
-  instead of falling to `0` or `—`. Whole columns dim when the device
-  disconnects.
-- **Watchdog auto-reload** — if no successful fetch arrives for 60 s,
-  `location.reload()` fires.
+- **Cache-busting** — every fetch goes through `noCacheFetch()`, which
+  appends `?_=<timestamp>` and sets `cache: 'no-store'`.
+- **Global staleness indicator** — the header shows
+  `Last: HH:MM:SS · Xs ago` driven by the latest of SP Pro's and
+  Solis's server-side `last_read` timestamps. The "Xs ago" suffix is
+  recomputed every 1 s from `Date.now()` so staleness is visible even
+  between fetches. Goes orange at 30 s, red at 60 s.
+- **Stale-value preservation** — `self.data.update(new_data)` is used
+  (not `self.data = new_data`), so a single failed Modbus batch on
+  the server doesn't wipe the dashboard. Previous values stay visible
+  until a fresh read replaces them.
 - **Meta-refresh backstop** — `<meta http-equiv="refresh" content="600">`
   hard-reloads every 10 minutes regardless of JS state.
 
@@ -323,20 +325,6 @@ Long-term fix: the reader's stop() handler should catch the disconnect
 inside the thread and reconnect, rather than letting the exception
 propagate to main.
 
-### Modbus transaction_id desync (Solis)
-
-If the Solis Modbus connection times out mid-request and a delayed
-response arrives later, the reader logs:
-
-```
-[ERROR] ERROR: request ask for transaction_id=N but got id=N-1, Skipping.
-```
-
-After this, the connection is permanently off-by-one and never recovers —
-data freezes at the last good read. Fix is to detect the mismatch in the
-reader and reconnect the socket. Until that's done, a
-`sudo systemctl restart microgrid-monitor.service` clears it.
-
 ### Two copies of `combined_v2.html`
 
 The dashboard template lives at both `templates/combined_v2.html` and
@@ -346,13 +334,46 @@ divergence, `server/templates/combined_v2.html` is now a symlink to
 `../../templates/combined_v2.html` and is tracked as a symlink in git.
 Don't replace it with a real file copy.
 
-### Legacy route alias missing on rubberduck
 
-Rubberduck's `app.py` only serves the legacy `/api/data` route for Solis;
-the newer template fetches `/api/solis/data` (which exists in
-`server_app.py` on pignus). On the LAN dashboard at
-`rubberduck.local:5000` this 404s and the Solis column shows
-"disconnected" — fix is a one-line alias route in `app.py`.
+## Solis reader reliability
+
+The Solis Modbus stack on the H3 has two failure modes that are easy to
+hit and slow to recover from. Both are now handled inside `app.py`:
+
+- **`transaction_id` desync.** When the inverter responds late to a
+  timed-out request, pymodbus matches the late response against the
+  next request's ID and returns an `isError()`. Without intervention
+  the socket stays poisoned forever — every subsequent read fails the
+  same way. The reader now sets `self.connected = False` whenever
+  `result.isError()` fires, and the next call to
+  `_read_registers_batch()` forces a fresh connect (closing the old
+  client first to avoid socket leaks).
+
+- **Slow polls hiding the watchdog.** Reading ~50 single-register
+  Modbus frames at ~700 ms each meant a single `poll_once()` took
+  ~30 s — and during that window the `_poll_loop()` couldn't reach
+  the watchdog check. Two changes solved this:
+  - Adjacent registers are pre-grouped into ~4 batches of up to 50
+    registers each (`_build_batches()`), so each `poll_once()` issues
+    ~4 Modbus frames instead of ~50, completing in ~3 s. The Solis
+    spec's recommended 300 ms gap between frames is honoured.
+  - Per-register loop bails on the first failed read (`break`) rather
+    than chaining ~50 timeouts. The next 5 s poll cycle reconnects
+    cleanly.
+
+- **Staleness watchdog.** Inside `_poll_loop()`, if `last_read_time`
+  hasn't advanced for `max(30s, 3 × poll_interval)` and the cooldown
+  has elapsed, the reader forces a `disconnect() → connect()`. This
+  catches silent failure modes that survive the per-read error
+  handling.
+
+- **Heartbeat log.** Every 30 s the reader logs
+  `Solis heartbeat: connected=…, last_read_age=…, total_reads=…,
+  read_errors=…`. Tail with `journalctl -u microgrid-monitor.service -f`
+  to confirm the poll thread is alive and reading.
+
+The same hardening (batched-where-applicable, isError-triggered
+reconnect, watchdog, heartbeat) is applied to `sppro_reader.py`.
 
 
 ## Dependencies
