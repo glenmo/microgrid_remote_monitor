@@ -155,18 +155,19 @@ class SmaReader:
             if not self.connected:
                 return None
         try:
-            # SMA Modbus uses input registers (FC=0x04) for sensor data
+            # SMA Modbus on Sunny WebBox: spot values are exposed via
+            # Read Holding Registers (FC=0x03), not Input Registers.
             try:
-                result = self.client.read_input_registers(
+                result = self.client.read_holding_registers(
                     address=address, count=2, device_id=self.unit_id
                 )
             except TypeError:
                 # older pymodbus
-                result = self.client.read_input_registers(
+                result = self.client.read_holding_registers(
                     address=address, count=2, slave=self.unit_id
                 )
             if isinstance(result, ModbusIOException) or result.isError():
-                log.debug(f"SMA: read error at {address}: {result}")
+                log.warning(f"SMA: read error at {address} unit={self.unit_id}: {result}")
                 # Single-register read failures shouldn't blow the whole
                 # connection — return None and let the caller keep going.
                 return None
@@ -315,11 +316,11 @@ def probe(host: str, port: int = 502, unit_id: int = DEFAULT_UNIT_ID,
     for addr in range(start, end):
         try:
             try:
-                r = client.read_input_registers(address=addr, count=2,
-                                                device_id=unit_id)
+                r = client.read_holding_registers(address=addr, count=2,
+                                                  device_id=unit_id)
             except TypeError:
-                r = client.read_input_registers(address=addr, count=2,
-                                                slave=unit_id)
+                r = client.read_holding_registers(address=addr, count=2,
+                                                  slave=unit_id)
             if isinstance(r, ModbusIOException) or r.isError():
                 continue
             regs = r.registers
