@@ -282,50 +282,55 @@ class SPProModbusReader:
                     self.history[key].append(combined.get(key, 0))
 
     def _poll_loop(self):
-        """Background polling loop with backoff and a staleness watchdog.
-
-        Existing behaviour: exponential backoff (capped at 60s) when the client
-        thinks it's disconnected.
-
-        New: if ``last_read_time`` hasn't advanced for max(30s, 3*poll_interval),
-        force a disconnect/reconnect. This catches silent failure modes where
-        reads error out without setting connected=False.
-        """
+        """Background polling loop with backoff and a staleness watchdog."""
         retry_delay = self.poll_interval
         last_forced_reconnect = datetime.now()
+        last_heartbeat = datetime.now()
         stale_threshold_s = max(30.0, 3.0 * self.poll_interval)
         reconnect_cooldown_s = max(30.0, 2.0 * self.poll_interval)
+
+        log.info(
+            f"SP Pro poll loop entered "
+            f"(stale_threshold={stale_threshold_s:.0f}s, cooldown={reconnect_cooldown_s:.0f}s)"
+        )
 
         while not self._stop_event.is_set():
             try:
                 self.poll_once()
                 if self.connected:
-                    retry_delay = self.poll_interval  # reset on success
+                    retry_delay = self.poll_interval
                 else:
-                    # Back off when not connected (max 60s between retries)
                     retry_delay = min(retry_delay * 2, 60)
                     log.info(f"SP Pro not connected, retrying in {retry_delay}s")
             except Exception as e:
                 log.error(f"SP Pro poll error: {e}")
                 retry_delay = min(retry_delay * 2, 60)
 
-            # Watchdog — force a reconnect if last_read is too stale.
-            if self.last_read_time is not None:
-                now = datetime.now()
-                age_s = (now - self.last_read_time).total_seconds()
-                cooldown_s = (now - last_forced_reconnect).total_seconds()
-                if age_s > stale_threshold_s and cooldown_s > reconnect_cooldown_s:
-                    log.warning(
-                        f"SP Pro watchdog: last_read is {age_s:.0f}s stale "
-                        f"(> {stale_threshold_s:.0f}s) — forcing reconnect"
-                    )
-                    try:
-                        self.disconnect()
-                    except Exception as e:
-                        log.warning(f"SP Pro watchdog: disconnect raised: {e}")
-                    self.connect()
-                    last_forced_reconnect = now
-                    retry_delay = self.poll_interval  # try a fresh full-speed cycle
+            now = datetime.now()
+            age_s = (now - self.last_read_time).total_seconds() if self.last_read_time else None
+            cooldown_s = (now - last_forced_reconnect).total_seconds()
+
+            if (now - last_heartbeat).total_seconds() >= 30:
+                age_str = f"{age_s:.0f}s" if age_s is not None else "never"
+                log.info(
+                    f"SP Pro heartbeat: connected={self.connected}, "
+                    f"last_read_age={age_str}, total_reads={self.total_reads}, "
+                    f"read_errors={self.read_errors}"
+                )
+                last_heartbeat = now
+
+            if age_s is not None and age_s > stale_threshold_s and cooldown_s > reconnect_cooldown_s:
+                log.warning(
+                    f"SP Pro watchdog: last_read is {age_s:.0f}s stale "
+                    f"(> {stale_threshold_s:.0f}s) — forcing reconnect"
+                )
+                try:
+                    self.disconnect()
+                except Exception as e:
+                    log.warning(f"SP Pro watchdog: disconnect raised: {e}")
+                self.connect()
+                last_forced_reconnect = now
+                retry_delay = self.poll_interval
 
             self._stop_event.wait(retry_delay)
 

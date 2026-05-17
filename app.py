@@ -447,8 +447,14 @@ class SolisModbusReader:
         mismatch, half-open TCP socket).
         """
         last_forced_reconnect = datetime.now()
+        last_heartbeat = datetime.now()
         stale_threshold_s = max(30.0, 3.0 * self.poll_interval)
         reconnect_cooldown_s = max(30.0, 2.0 * self.poll_interval)
+
+        log.info(
+            f"Solis poll loop entered "
+            f"(stale_threshold={stale_threshold_s:.0f}s, cooldown={reconnect_cooldown_s:.0f}s)"
+        )
 
         while not self._stop_event.is_set():
             try:
@@ -456,23 +462,33 @@ class SolisModbusReader:
             except Exception as e:
                 log.error(f"Poll error: {e}")
 
-            # Watchdog — runs every tick, but only forces a reconnect when stale
-            # AND the cooldown since the last forced reconnect has elapsed.
-            if self.last_read_time is not None and not self._shared_client:
-                now = datetime.now()
-                age_s = (now - self.last_read_time).total_seconds()
-                cooldown_s = (now - last_forced_reconnect).total_seconds()
-                if age_s > stale_threshold_s and cooldown_s > reconnect_cooldown_s:
-                    log.warning(
-                        f"Solis watchdog: last_read is {age_s:.0f}s stale "
-                        f"(> {stale_threshold_s:.0f}s) — forcing reconnect"
-                    )
-                    try:
-                        self.disconnect()
-                    except Exception as e:
-                        log.warning(f"Solis watchdog: disconnect raised: {e}")
-                    self.connect()
-                    last_forced_reconnect = now
+            now = datetime.now()
+            age_s = (now - self.last_read_time).total_seconds() if self.last_read_time else None
+            cooldown_s = (now - last_forced_reconnect).total_seconds()
+
+            # Heartbeat every 30s — proves the polling thread is alive and
+            # shows the values the watchdog is evaluating against.
+            if (now - last_heartbeat).total_seconds() >= 30:
+                age_str = f"{age_s:.0f}s" if age_s is not None else "never"
+                log.info(
+                    f"Solis heartbeat: connected={self.connected}, "
+                    f"last_read_age={age_str}, total_reads={self.total_reads}, "
+                    f"read_errors={self.read_errors}"
+                )
+                last_heartbeat = now
+
+            # Watchdog — when stale and cooldown elapsed, force a fresh socket.
+            if age_s is not None and age_s > stale_threshold_s and cooldown_s > reconnect_cooldown_s:
+                log.warning(
+                    f"Solis watchdog: last_read is {age_s:.0f}s stale "
+                    f"(> {stale_threshold_s:.0f}s) — forcing reconnect"
+                )
+                try:
+                    self.disconnect()
+                except Exception as e:
+                    log.warning(f"Solis watchdog: disconnect raised: {e}")
+                self.connect()
+                last_forced_reconnect = now
 
             self._stop_event.wait(self.poll_interval)
 
