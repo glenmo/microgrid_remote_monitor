@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ site_name }}</title>
+<style>
+  :root {
+    --bg: #0e1218; --panel: #1a2028; --panel-border: #262e38;
+    --text: #e8edf2; --muted: #8a96a3;
+    --bifa-1p: #f59e0b;  /* PV1 — 1P bifacial */
+    --mono-1p: #94a3b8;  /* PV2 — 1P mono */
+    --mono-2p: #475569;  /* PV3 — 2P mono */
+    --bifa-2p: #ef4444;  /* PV4 — 2P bifacial */
+    --green: #22c55e; --orange: #f59e0b; --red: #ef4444; --blue: #3b82f6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header { padding: 18px 20px 8px; }
+  header h1 { margin: 0; font-size: clamp(20px, 3vw, 28px); font-weight: 600; }
+  header .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  header .meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  main { padding: 16px 20px 40px; max-width: 1500px; margin: 0 auto; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+             gap: 14px; margin-bottom: 16px; }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .kpi .label {
+    font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px;
+  }
+  .kpi .value {
+    font-size: clamp(24px, 3.5vw, 36px); font-weight: 700;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .kpi .sub { color: var(--muted); font-size: 12px; margin-top: 4px;
+              font-variant-numeric: tabular-nums; }
+  .kpi.bg-1p .value { color: var(--bifa-1p); }
+  .kpi.bg-2p .value { color: var(--bifa-2p); }
+
+  .strings-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px; margin-bottom: 18px;
+  }
+  .str-card {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 10px; padding: 14px 16px; border-left: 4px solid var(--muted);
+  }
+  .str-card.pv1 { border-left-color: var(--bifa-1p); }
+  .str-card.pv2 { border-left-color: var(--mono-1p); }
+  .str-card.pv3 { border-left-color: var(--mono-2p); }
+  .str-card.pv4 { border-left-color: var(--bifa-2p); }
+  .str-card .title {
+    font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px;
+  }
+  .str-card .power {
+    font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .str-card .sub { color: var(--muted); font-size: 12px; margin-top: 6px;
+                   font-variant-numeric: tabular-nums; }
+  .str-card .row { display: flex; justify-content: space-between; padding: 1px 0; }
+  .str-card .row .k { color: var(--muted); }
+  .str-card .row .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .detail-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px; margin-bottom: 18px;
+  }
+  .tile {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .tile .label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+                 color: var(--muted); }
+  .tile .value { font-size: 18px; font-weight: 600; margin-top: 4px;
+                 font-variant-numeric: tabular-nums; }
+
+  .charts {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px;
+  }
+  @media (max-width: 1000px) { .charts { grid-template-columns: 1fr; } }
+  .chart-card {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 14px 16px;
+  }
+  .chart-card .title {
+    font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px;
+  }
+  .chart-wrap { height: 260px; position: relative; }
+
+  .actions { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  .actions a {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    color: var(--text); padding: 8px 14px; border-radius: 8px;
+    text-decoration: none; font-size: 13px;
+  }
+  .actions a:hover { background: #232c38; }
+
+  footer { color: var(--muted); font-size: 11px; text-align: center; padding: 18px; }
+
+  .offline-banner {
+    background: var(--red); color: white; text-align: center;
+    padding: 10px; font-weight: 600; display: none;
+  }
+  .offline-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<div id="offline-banner" class="offline-banner">⚠ Lost contact with backend</div>
+
+<header>
+  <h1>{{ site_name }}</h1>
+  <div class="subtitle">
+    Bifacial vs Monofacial · Longi 435 W · Arctech 1P + 2P · 13×3 strings into Solis 50 kW
+  </div>
+  <div class="meta" id="header-meta">—</div>
+</header>
+
+<main>
+  <!-- ============ Headline KPIs ============ -->
+  <section class="kpi-row">
+    <div class="kpi bg-1p">
+      <div class="label">1P Bifacial Gain (now)</div>
+      <div class="value" id="bg1p-now">—</div>
+      <div class="sub" id="bg1p-today">Today avg: —</div>
+    </div>
+    <div class="kpi bg-2p">
+      <div class="label">2P Bifacial Gain (now)</div>
+      <div class="value" id="bg2p-now">—</div>
+      <div class="sub" id="bg2p-today">Today avg: —</div>
+    </div>
+    <div class="kpi">
+      <div class="label">POA Irradiance</div>
+      <div class="value" id="poa">—</div>
+      <div class="sub" id="clearness">Clearness: —</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Sun Elevation</div>
+      <div class="value" id="sun-elev">—</div>
+      <div class="sub" id="sun-azim">Azim: —</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Tracker Tilt</div>
+      <div class="value" id="tilt">—</div>
+      <div class="sub">computed (NS-axis backtrack)</div>
+    </div>
+  </section>
+
+  <!-- ============ Per-string strip ============ -->
+  <section class="strings-row" id="strings-row"></section>
+
+  <!-- ============ Detail tiles ============ -->
+  <section class="detail-row">
+    <div class="tile"><div class="label">Module Temp</div><div class="value" id="t-mod">—</div></div>
+    <div class="tile"><div class="label">Ambient Temp</div><div class="value" id="t-amb">—</div></div>
+    <div class="tile"><div class="label">Wind</div><div class="value" id="t-wind">—</div></div>
+    <div class="tile"><div class="label">Clear-sky GHI</div><div class="value" id="t-csg">—</div></div>
+    <div class="tile"><div class="label">Total PV (now)</div><div class="value" id="t-total">—</div></div>
+    <div class="tile"><div class="label">Total Today</div><div class="value" id="t-today">—</div></div>
+  </section>
+
+  <!-- ============ Charts ============ -->
+  <section class="charts">
+    <div class="chart-card">
+      <div class="title">Per-string power today</div>
+      <div class="chart-wrap"><canvas id="powerChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="title">Bifacial gain today (%)</div>
+      <div class="chart-wrap"><canvas id="bgChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="title">Irradiance + temperatures</div>
+      <div class="chart-wrap"><canvas id="weatherChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="title">Power vs Irradiance (today)</div>
+      <div class="chart-wrap"><canvas id="scatterChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="actions">
+    <a href="/csv/today.csv">Download today's CSV</a>
+    <a href="/csv/" target="_blank">List CSV files</a>
+  </section>
+</main>
+
+<footer>Refreshes every 1 s · charts every 30 s · CSV logged every 5 s</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+(function () {
+  Chart.defaults.color = '#e8edf2';
+
+  // Color scheme — bifacial pairs in vivid, mono pairs in grey
+  const COLORS = {
+    pv1: '#f59e0b', // 1P bifacial
+    pv2: '#94a3b8', // 1P mono
+    pv3: '#475569', // 2P mono
+    pv4: '#ef4444', // 2P bifacial
+  };
+  const LABELS = {
+    pv1: 'PV1 · 1P Bifacial',
+    pv2: 'PV2 · 1P Mono',
+    pv3: 'PV3 · 2P Mono',
+    pv4: 'PV4 · 2P Bifacial',
+  };
+
+  // Solid-fill legend rectangles
+  const solidLegend = {
+    labels: {
+      color: '#e8edf2',
+      generateLabels: function (chart) {
+        return chart.data.datasets.map((ds, i) => ({
+          text: ds.label,
+          fillStyle: ds.borderColor,
+          strokeStyle: ds.borderColor,
+          fontColor: '#e8edf2',
+          lineWidth: 0,
+          hidden: !chart.isDatasetVisible(i),
+          datasetIndex: i,
+        }));
+      },
+    },
+  };
+
+  // ---- Charts ----
+  const powerChart = new Chart(document.getElementById('powerChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: LABELS.pv1, data: [], borderColor: COLORS.pv1, borderWidth: 2,   pointRadius: 0, tension: 0.2 },
+      { label: LABELS.pv2, data: [], borderColor: COLORS.pv2, borderWidth: 1.5, pointRadius: 0, tension: 0.2, borderDash: [5,4] },
+      { label: LABELS.pv3, data: [], borderColor: COLORS.pv3, borderWidth: 1.5, pointRadius: 0, tension: 0.2, borderDash: [5,4] },
+      { label: LABELS.pv4, data: [], borderColor: COLORS.pv4, borderWidth: 2,   pointRadius: 0, tension: 0.2 },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        y: { grid: { color: '#1e293b' }, title: { display: true, text: 'W', color: '#e8edf2' } },
+        x: { grid: { color: '#1e293b' }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+      },
+      plugins: { legend: solidLegend },
+    },
+  });
+
+  const bgChart = new Chart(document.getElementById('bgChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: '1P Bifacial Gain', data: [], borderColor: COLORS.pv1, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+      { label: '2P Bifacial Gain', data: [], borderColor: COLORS.pv4, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        y: { grid: { color: '#1e293b' }, title: { display: true, text: '%', color: '#e8edf2' } },
+        x: { grid: { color: '#1e293b' }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+      },
+      plugins: { legend: solidLegend },
+    },
+  });
+
+  const weatherChart = new Chart(document.getElementById('weatherChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'POA Irradiance', data: [], borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0, tension: 0.2, yAxisID: 'y' },
+      { label: 'Module °C',      data: [], borderColor: '#f43f5e', borderWidth: 1.5, pointRadius: 0, tension: 0.2, yAxisID: 'y2' },
+      { label: 'Ambient °C',     data: [], borderColor: '#60a5fa', borderWidth: 1.5, pointRadius: 0, tension: 0.2, yAxisID: 'y2' },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        y:  { position: 'left',  grid: { color: '#1e293b' }, title: { display: true, text: 'W/m²', color: '#e8edf2' } },
+        y2: { position: 'right', grid: { display: false }, title: { display: true, text: '°C', color: '#e8edf2' } },
+        x:  { grid: { color: '#1e293b' }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+      },
+      plugins: { legend: solidLegend },
+    },
+  });
+
+  const scatterChart = new Chart(document.getElementById('scatterChart').getContext('2d'), {
+    type: 'scatter',
+    data: { datasets: [
+      { label: LABELS.pv1, data: [], backgroundColor: COLORS.pv1, pointRadius: 2 },
+      { label: LABELS.pv2, data: [], backgroundColor: COLORS.pv2, pointRadius: 2 },
+      { label: LABELS.pv3, data: [], backgroundColor: COLORS.pv3, pointRadius: 2 },
+      { label: LABELS.pv4, data: [], backgroundColor: COLORS.pv4, pointRadius: 2 },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        x: { type: 'linear', title: { display: true, text: 'POA W/m²', color: '#e8edf2' },
+             grid: { color: '#1e293b' } },
+        y: { title: { display: true, text: 'String power (W)', color: '#e8edf2' },
+             grid: { color: '#1e293b' } },
+      },
+      plugins: { legend: { labels: { color: '#e8edf2', usePointStyle: true } } },
+    },
+  });
+
+  // ---- Helpers ----
+  function fmt(v, dp=1, suffix='') {
+    if (v === null || v === undefined || isNaN(v)) return '—';
+    return Number(v).toFixed(dp) + suffix;
+  }
+  function fmtPower(w) {
+    if (w === null || w === undefined || isNaN(w)) return '—';
+    if (Math.abs(w) < 1000) return Number(w).toFixed(0) + ' W';
+    return (w / 1000).toFixed(2) + ' kW';
+  }
+  function noCacheFetch(url) {
+    const sep = url.includes('?') ? '&' : '?';
+    return fetch(url + sep + '_=' + Date.now(), { cache: 'no-store' });
+  }
+  function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  // ---- Build per-string strip ----
+  const STRINGS = {{ string_info | tojson }};
+  const stripEl = document.getElementById('strings-row');
+  for (const key of ['pv1', 'pv2', 'pv3', 'pv4']) {
+    const info = STRINGS[key];
+    const card = document.createElement('div');
+    card.className = `str-card ${key}`;
+    card.innerHTML = `
+      <div class="title">${info.label}</div>
+      <div class="power" id="${key}-w">—</div>
+      <div class="sub">
+        <div class="row"><span class="k">V</span><span class="v" id="${key}-v">—</span></div>
+        <div class="row"><span class="k">A</span><span class="v" id="${key}-a">—</span></div>
+        <div class="row"><span class="k">Today</span><span class="v" id="${key}-kwh">—</span></div>
+        <div class="row"><span class="k">Specific yield</span><span class="v" id="${key}-sy">—</span></div>
+        <div class="row"><span class="k">PR (now)</span><span class="v" id="${key}-pr">—</span></div>
+      </div>`;
+    stripEl.appendChild(card);
+  }
+
+  // ---- State refresh ----
+  async function refreshState() {
+    try {
+      const r = await noCacheFetch('/api/state');
+      const d = await r.json();
+      document.getElementById('offline-banner').classList.remove('show');
+      if (!d.live) return;
+      const live = d.live;
+
+      // Headline KPIs
+      setText('bg1p-now',  live.bg_1p_pct != null ? fmt(live.bg_1p_pct, 2, ' %') : '—');
+      setText('bg2p-now',  live.bg_2p_pct != null ? fmt(live.bg_2p_pct, 2, ' %') : '—');
+      setText('bg1p-today',
+              'Today avg: ' + (d.avg_bg_1p_pct != null ? fmt(d.avg_bg_1p_pct, 2, ' %') : '—'));
+      setText('bg2p-today',
+              'Today avg: ' + (d.avg_bg_2p_pct != null ? fmt(d.avg_bg_2p_pct, 2, ' %') : '—'));
+      setText('poa',       fmt(live.poa_wm2, 0, ' W/m²'));
+      setText('clearness', 'Clearness: ' + (live.clearness_index != null ? fmt(live.clearness_index, 2) : '—'));
+      setText('sun-elev',  fmt(live.sun_elev_deg, 1, '°'));
+      setText('sun-azim',  'Azim: ' + fmt(live.sun_azim_deg, 0, '°'));
+      setText('tilt',      fmt(live.tracker_tilt_deg, 1, '°'));
+
+      // Per-string
+      let totalW = 0;
+      for (const key of ['pv1', 'pv2', 'pv3', 'pv4']) {
+        const s = live[key] || {};
+        setText(`${key}-w`, fmtPower(s.w));
+        setText(`${key}-v`, fmt(s.v, 1, ' V'));
+        setText(`${key}-a`, fmt(s.a, 2, ' A'));
+        const kwh = d.kwh_today ? d.kwh_today[key] : null;
+        setText(`${key}-kwh`, kwh != null ? fmt(kwh, 2, ' kWh') : '—');
+        const sy = d.specific_yield_today ? d.specific_yield_today[key] : null;
+        setText(`${key}-sy`, sy != null ? fmt(sy, 3, ' kWh/kWp') : '—');
+        setText(`${key}-pr`, s.pr != null ? fmt(s.pr * 100, 1, ' %') : '—');
+        if (s.w != null) totalW += s.w;
+      }
+
+      // Detail tiles
+      setText('t-mod',  fmt(live.mod_temp_c, 1, ' °C'));
+      setText('t-amb',  fmt(live.amb_temp_c, 1, ' °C'));
+      setText('t-wind', fmt(live.wind_ms, 1, ' m/s'));
+      setText('t-csg',  fmt(live.clear_sky_ghi, 0, ' W/m²'));
+      setText('t-total', fmtPower(totalW));
+      const totalToday = ['pv1','pv2','pv3','pv4']
+        .map(k => (d.kwh_today && d.kwh_today[k]) || 0)
+        .reduce((a, b) => a + b, 0);
+      setText('t-today', fmt(totalToday, 2, ' kWh'));
+
+      // Header meta
+      const nowStr = new Date(live.ts).toLocaleTimeString('en-AU');
+      const smaStat = d.sma_status || {};
+      const smaConn = smaStat.connected ? 'SMA OK' : 'SMA OFFLINE';
+      const smaAge = smaStat.last_read
+        ? Math.floor((Date.now() - new Date(smaStat.last_read).getTime()) / 1000) + 's'
+        : '—';
+      setText('header-meta',
+              `Last: ${nowStr} · ${smaConn} (read ${smaAge} ago) · Lat ${(-37.4).toFixed(2)}, Lon ${(144.9).toFixed(2)}`);
+    } catch (e) {
+      console.warn(e);
+      document.getElementById('offline-banner').classList.add('show');
+    }
+  }
+
+  async function refreshHistory() {
+    try {
+      const r = await noCacheFetch('/api/history');
+      const h = await r.json();
+      const labels = (h.timestamps || []).map(t => (t || '').split('T')[1]?.slice(0,8) || t);
+
+      // Per-string power
+      powerChart.data.labels = labels;
+      powerChart.data.datasets[0].data = h.pv1_w || [];
+      powerChart.data.datasets[1].data = h.pv2_w || [];
+      powerChart.data.datasets[2].data = h.pv3_w || [];
+      powerChart.data.datasets[3].data = h.pv4_w || [];
+      powerChart.update('none');
+
+      // Bifacial gain
+      bgChart.data.labels = labels;
+      bgChart.data.datasets[0].data = h.bg_1p_pct || [];
+      bgChart.data.datasets[1].data = h.bg_2p_pct || [];
+      bgChart.update('none');
+
+      // Weather
+      weatherChart.data.labels = labels;
+      weatherChart.data.datasets[0].data = h.poa_wm2 || [];
+      weatherChart.data.datasets[1].data = h.mod_temp_c || [];
+      weatherChart.data.datasets[2].data = h.amb_temp_c || [];
+      weatherChart.update('none');
+
+      // Scatter — power vs irradiance, sampled
+      const poa = h.poa_wm2 || [];
+      const pv1 = h.pv1_w || [], pv2 = h.pv2_w || [];
+      const pv3 = h.pv3_w || [], pv4 = h.pv4_w || [];
+      const ds = scatterChart.data.datasets;
+      ds[0].data = []; ds[1].data = []; ds[2].data = []; ds[3].data = [];
+      for (let i = 0; i < poa.length; i++) {
+        const x = poa[i];
+        if (x == null || x < 50) continue;
+        if (pv1[i] != null) ds[0].data.push({ x, y: pv1[i] });
+        if (pv2[i] != null) ds[1].data.push({ x, y: pv2[i] });
+        if (pv3[i] != null) ds[2].data.push({ x, y: pv3[i] });
+        if (pv4[i] != null) ds[3].data.push({ x, y: pv4[i] });
+      }
+      scatterChart.update('none');
+    } catch (e) { console.warn(e); }
+  }
+
+  refreshState(); refreshHistory();
+  setInterval(refreshState, 1000);
+  setInterval(refreshHistory, 30000);
+})();
+</script>
+</body>
+</html>
