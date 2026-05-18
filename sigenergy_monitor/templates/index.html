@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ site_name }}</title>
+<style>
+  :root {
+    --bg: #0e1218; --panel: #1a2028; --panel-border: #262e38;
+    --text: #e8edf2; --muted: #8a96a3;
+    --green: #22c55e; --orange: #f59e0b; --red: #ef4444; --blue: #3b82f6;
+    --yellow: #fbbf24; --purple: #a78bfa; --pink: #ec4899;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow-x: hidden;
+  }
+  header { padding: 18px 20px 8px; max-width: 1500px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: clamp(20px, 3vw, 28px); font-weight: 600; }
+  header .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  header .meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  main { padding: 16px 20px 40px; max-width: 1500px; margin: 0 auto; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+             gap: 14px; margin-bottom: 16px; }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .kpi .label {
+    font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px;
+  }
+  .kpi .value {
+    font-size: clamp(22px, 3vw, 32px); font-weight: 700;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .kpi .sub { color: var(--muted); font-size: 12px; margin-top: 4px;
+              font-variant-numeric: tabular-nums; }
+  .kpi .value.green   { color: var(--green); }
+  .kpi .value.orange  { color: var(--orange); }
+  .kpi .value.red     { color: var(--red); }
+  .kpi .value.blue    { color: var(--blue); }
+
+  .section {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;
+  }
+  .section .title {
+    font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  .section .body {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .field { padding: 4px 0; }
+  .field .k { color: var(--muted); font-size: 11px; text-transform: uppercase;
+              letter-spacing: 0.5px; }
+  .field .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums;
+              margin-top: 2px; }
+
+  .pv-strings { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 10px; }
+  .pv-card {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--panel-border);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .pv-card .name { font-size: 11px; color: var(--muted); text-transform: uppercase;
+                   letter-spacing: 0.5px; }
+  .pv-card .power { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;
+                    margin-top: 4px; }
+  .pv-card .va { color: var(--muted); font-size: 12px; margin-top: 4px;
+                 font-variant-numeric: tabular-nums; }
+
+  .ev-card.idle { opacity: 0.6; }
+  .ev-card .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 10px;
+    font-size: 11px; background: rgba(34,197,94,0.18); color: var(--green);
+  }
+  .ev-card.idle .badge { background: rgba(255,255,255,0.05); color: var(--muted); }
+
+  .charts {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px;
+  }
+  @media (max-width: 1000px) { .charts { grid-template-columns: 1fr; } }
+  .chart-card {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 14px 16px;
+  }
+  .chart-card .title {
+    font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px;
+  }
+  .chart-wrap { height: 260px; position: relative; }
+
+  .actions { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  .actions a {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    color: var(--text); padding: 8px 14px; border-radius: 8px;
+    text-decoration: none; font-size: 13px;
+  }
+  .actions a:hover { background: #232c38; }
+
+  footer { color: var(--muted); font-size: 11px; text-align: center; padding: 18px; }
+  .offline-banner {
+    background: var(--red); color: white; text-align: center;
+    padding: 10px; font-weight: 600; display: none;
+  }
+  .offline-banner.show { display: block; }
+</style>
+</head>
+<body>
+
+<div id="offline-banner" class="offline-banner">⚠ Lost contact with Sigenergy</div>
+
+<header>
+  <h1>{{ site_name }}</h1>
+  <div class="subtitle">SigenStor EC 10.0 TP · 32 kWh ({{ battery_kwh }} kWh nameplate) · 25 kW DC EV charger</div>
+  <div class="meta" id="header-meta">—</div>
+</header>
+
+<main>
+
+  <!-- ============ Headline KPIs ============ -->
+  <section class="kpi-row">
+    <div class="kpi">
+      <div class="label">Battery SOC</div>
+      <div class="value" id="soc">—</div>
+      <div class="sub" id="soh">SoH —</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Battery Power</div>
+      <div class="value" id="batt-power">—</div>
+      <div class="sub" id="batt-direction">—</div>
+    </div>
+    <div class="kpi">
+      <div class="label">PV Power</div>
+      <div class="value" id="pv-power">—</div>
+      <div class="sub" id="pv-today">Today: —</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Grid Power</div>
+      <div class="value" id="grid-power">—</div>
+      <div class="sub" id="grid-direction">—</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Load</div>
+      <div class="value" id="load-power">—</div>
+      <div class="sub" id="plant-state">—</div>
+    </div>
+  </section>
+
+  <!-- ============ Energy today strip ============ -->
+  <section class="section">
+    <div class="title">Energy today</div>
+    <div class="body">
+      <div class="field"><div class="k">PV today</div><div class="v" id="e-pv">—</div></div>
+      <div class="field"><div class="k">Battery charged</div><div class="v" id="e-bc">—</div></div>
+      <div class="field"><div class="k">Battery discharged</div><div class="v" id="e-bd">—</div></div>
+      <div class="field"><div class="k">Grid imported</div><div class="v" id="e-gi">—</div></div>
+      <div class="field"><div class="k">Grid exported</div><div class="v" id="e-ge">—</div></div>
+      <div class="field"><div class="k">EMS mode</div><div class="v" id="e-mode">—</div></div>
+    </div>
+  </section>
+
+  <!-- ============ Battery details ============ -->
+  <section class="section">
+    <div class="title">Battery</div>
+    <div class="body">
+      <div class="field"><div class="k">Average cell temp</div><div class="v" id="b-temp">—</div></div>
+      <div class="field"><div class="k">Average cell voltage</div><div class="v" id="b-cellv">—</div></div>
+      <div class="field"><div class="k">SoH</div><div class="v" id="b-soh">—</div></div>
+      <div class="field"><div class="k">Max charge</div><div class="v" id="b-maxchg">—</div></div>
+      <div class="field"><div class="k">Max discharge</div><div class="v" id="b-maxdis">—</div></div>
+      <div class="field"><div class="k">Available charge</div><div class="v" id="b-avchg">—</div></div>
+      <div class="field"><div class="k">Available discharge</div><div class="v" id="b-avdis">—</div></div>
+      <div class="field"><div class="k">Pack count</div><div class="v" id="b-pack">—</div></div>
+    </div>
+  </section>
+
+  <!-- ============ PV strings ============ -->
+  <section class="section">
+    <div class="title">PV Strings</div>
+    <div class="pv-strings" id="pv-strings"></div>
+    <div class="body" style="margin-top:10px">
+      <div class="field"><div class="k">MPPT count</div><div class="v" id="pv-mppt">—</div></div>
+      <div class="field"><div class="k">String count</div><div class="v" id="pv-strcount">—</div></div>
+      <div class="field"><div class="k">Insulation</div><div class="v" id="pv-iso">—</div></div>
+      <div class="field"><div class="k">Total PV</div><div class="v" id="pv-total">—</div></div>
+    </div>
+  </section>
+
+  <!-- ============ AC output ============ -->
+  <section class="section">
+    <div class="title">AC Output (3-phase)</div>
+    <div class="body">
+      <div class="field"><div class="k">L1 Voltage</div><div class="v" id="ac-av">—</div></div>
+      <div class="field"><div class="k">L2 Voltage</div><div class="v" id="ac-bv">—</div></div>
+      <div class="field"><div class="k">L3 Voltage</div><div class="v" id="ac-cv">—</div></div>
+      <div class="field"><div class="k">L1 Current</div><div class="v" id="ac-aa">—</div></div>
+      <div class="field"><div class="k">L2 Current</div><div class="v" id="ac-ba">—</div></div>
+      <div class="field"><div class="k">L3 Current</div><div class="v" id="ac-ca">—</div></div>
+      <div class="field"><div class="k">A-B / B-C / C-A</div><div class="v" id="ac-lines">—</div></div>
+      <div class="field"><div class="k">Grid frequency</div><div class="v" id="ac-freq">—</div></div>
+      <div class="field"><div class="k">Power factor</div><div class="v" id="ac-pf">—</div></div>
+      <div class="field"><div class="k">PCS internal temp</div><div class="v" id="ac-pcs">—</div></div>
+    </div>
+  </section>
+
+  <!-- ============ EV charger ============ -->
+  <section class="section ev-card idle" id="ev-section">
+    <div class="title">DC EV Charger <span class="badge" id="ev-badge">idle</span></div>
+    <div class="body">
+      <div class="field"><div class="k">Vehicle SOC</div><div class="v" id="ev-soc">—</div></div>
+      <div class="field"><div class="k">Charging power</div><div class="v" id="ev-power">—</div></div>
+      <div class="field"><div class="k">Vehicle voltage</div><div class="v" id="ev-v">—</div></div>
+      <div class="field"><div class="k">Charging current</div><div class="v" id="ev-a">—</div></div>
+      <div class="field"><div class="k">Session energy</div><div class="v" id="ev-kwh">—</div></div>
+      <div class="field"><div class="k">Session duration</div><div class="v" id="ev-dur">—</div></div>
+    </div>
+  </section>
+
+  <!-- ============ Weather (SMA) ============ -->
+  <section class="section">
+    <div class="title">Weather (SMA Sunny Sensor)</div>
+    <div class="body">
+      <div class="field"><div class="k">POA irradiance</div><div class="v" id="w-poa">—</div></div>
+      <div class="field"><div class="k">Ambient temp</div><div class="v" id="w-amb">—</div></div>
+      <div class="field"><div class="k">Module temp</div><div class="v" id="w-mod">—</div></div>
+      <div class="field"><div class="k">Wind</div><div class="v" id="w-wind">—</div></div>
+      <div class="field"><div class="k">Humidity</div><div class="v" id="w-hum">—</div></div>
+      <div class="field"><div class="k">Air pressure</div><div class="v" id="w-press">—</div></div>
+    </div>
+  </section>
+
+  <!-- ============ Charts ============ -->
+  <section class="charts">
+    <div class="chart-card">
+      <div class="title">Power flow today</div>
+      <div class="chart-wrap"><canvas id="powerChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="title">SOC today</div>
+      <div class="chart-wrap"><canvas id="socChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="title">AC voltages today (L1 / L2 / L3)</div>
+      <div class="chart-wrap"><canvas id="acChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="title">Temperatures today (battery cell / PCS / ambient)</div>
+      <div class="chart-wrap"><canvas id="tempChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="actions">
+    <a href="/csv/today.csv">Download today's CSV</a>
+    <a href="/csv/" target="_blank">List CSV files</a>
+  </section>
+</main>
+
+<footer>Refreshes every 1 s · charts every 30 s · CSV logged every 5 s</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+(function () {
+  Chart.defaults.color = '#e8edf2';
+
+  const solidLegend = {
+    labels: {
+      color: '#e8edf2',
+      generateLabels: c => c.data.datasets.map((ds, i) => ({
+        text: ds.label, fillStyle: ds.borderColor, strokeStyle: ds.borderColor,
+        fontColor: '#e8edf2', lineWidth: 0,
+        hidden: !c.isDatasetVisible(i), datasetIndex: i,
+      }))
+    }
+  };
+
+  const COLORS = {
+    pv:    '#fbbf24', // yellow
+    batt:  '#22c55e', // green
+    grid:  '#3b82f6', // blue
+    load:  '#a78bfa', // purple
+    soc:   '#22c55e',
+    cell:  '#ef4444',
+    pcs:   '#f59e0b',
+    amb:   '#60a5fa',
+    l1:    '#fbbf24',
+    l2:    '#22c55e',
+    l3:    '#ef4444',
+  };
+
+  const powerChart = new Chart(document.getElementById('powerChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'PV',      data: [], borderColor: COLORS.pv,   borderWidth: 2, pointRadius: 0, tension: 0.2 },
+      { label: 'Battery', data: [], borderColor: COLORS.batt, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+      { label: 'Grid',    data: [], borderColor: COLORS.grid, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        y: { grid: { color: '#1e293b' }, title: { display: true, text: 'kW', color: '#e8edf2' } },
+        x: { grid: { color: '#1e293b' }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+      },
+      plugins: { legend: solidLegend },
+    },
+  });
+
+  const socChart = new Chart(document.getElementById('socChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'SOC', data: [], borderColor: COLORS.soc, borderWidth: 2, pointRadius: 0, tension: 0.2,
+        fill: true, backgroundColor: 'rgba(34,197,94,0.08)' },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        y: { min: 0, max: 100, grid: { color: '#1e293b' }, title: { display: true, text: '%', color: '#e8edf2' } },
+        x: { grid: { color: '#1e293b' }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+      },
+      plugins: { legend: solidLegend },
+    },
+  });
+
+  const acChart = new Chart(document.getElementById('acChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'L1 V', data: [], borderColor: COLORS.l1, borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
+      { label: 'L2 V', data: [], borderColor: COLORS.l2, borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
+      { label: 'L3 V', data: [], borderColor: COLORS.l3, borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        y: { grid: { color: '#1e293b' }, title: { display: true, text: 'V', color: '#e8edf2' } },
+        x: { grid: { color: '#1e293b' }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+      },
+      plugins: { legend: solidLegend },
+    },
+  });
+
+  const tempChart = new Chart(document.getElementById('tempChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Cell °C',  data: [], borderColor: COLORS.cell, borderWidth: 2,   pointRadius: 0, tension: 0.2 },
+      { label: 'PCS °C',   data: [], borderColor: COLORS.pcs,  borderWidth: 2,   pointRadius: 0, tension: 0.2 },
+      { label: 'Ambient °C', data: [], borderColor: COLORS.amb, borderWidth: 1.5, pointRadius: 0, tension: 0.2, borderDash: [5,4] },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        y: { grid: { color: '#1e293b' }, title: { display: true, text: '°C', color: '#e8edf2' } },
+        x: { grid: { color: '#1e293b' }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+      },
+      plugins: { legend: solidLegend },
+    },
+  });
+
+  // ---- helpers ----
+  function fmt(v, dp=1, suffix='') {
+    if (v === null || v === undefined || isNaN(v)) return '—';
+    return Number(v).toFixed(dp) + suffix;
+  }
+  function fmtPower(kw) {
+    if (kw === null || kw === undefined || isNaN(kw)) return '—';
+    const w = kw * 1000;
+    if (Math.abs(w) < 1000) return w.toFixed(0) + ' W';
+    return kw.toFixed(2) + ' kW';
+  }
+  function fmtDur(s) {
+    if (s === null || s === undefined || isNaN(s)) return '—';
+    s = Math.floor(s);
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${ss}s`;
+    return `${ss}s`;
+  }
+  function noCacheFetch(url) {
+    const sep = url.includes('?') ? '&' : '?';
+    return fetch(url + sep + '_=' + Date.now(), { cache: 'no-store' });
+  }
+  function setText(id, t) { const el = document.getElementById(id); if (el) el.textContent = t; }
+
+  // ---- PV string cards ----
+  const pvWrap = document.getElementById('pv-strings');
+  for (const n of [1,2,3,4]) {
+    const c = document.createElement('div');
+    c.className = 'pv-card';
+    c.innerHTML = `
+      <div class="name">PV${n}</div>
+      <div class="power" id="pv${n}-w">—</div>
+      <div class="va"><span id="pv${n}-v">—</span> · <span id="pv${n}-a">—</span></div>`;
+    pvWrap.appendChild(c);
+  }
+
+  // ---- State refresh ----
+  async function refreshState() {
+    try {
+      const r = await noCacheFetch('/api/state');
+      const s = await r.json();
+      const live = s.sigen || {};
+      const w = s.weather || {};
+      const c = s.computed || {};
+
+      document.getElementById('offline-banner').classList.toggle('show', !s.sigen_status?.connected);
+
+      // KPI row
+      setText('soc',   fmt(live.batt_soc_pct, 1, ' %'));
+      setText('soh',   `SoH ${fmt(live.batt_soh_pct, 1, ' %')}`);
+
+      const bp = live.batt_power_kw;
+      const bpEl = document.getElementById('batt-power');
+      bpEl.textContent = fmtPower(bp);
+      bpEl.className = 'value ' + (bp > 0.05 ? 'green' : (bp < -0.05 ? 'orange' : ''));
+      setText('batt-direction',
+              bp > 0.05 ? '▲ charging' : (bp < -0.05 ? '▼ discharging' : 'idle'));
+
+      setText('pv-power', fmtPower(live.plant_pv_kw));
+      setText('pv-today', `Today: ${fmt(live.daily_pv_kwh ?? null, 2, ' kWh')}`);
+
+      const gp = live.grid_power_kw;
+      const gpEl = document.getElementById('grid-power');
+      gpEl.textContent = fmtPower(gp);
+      gpEl.className = 'value ' + (gp > 0.05 ? 'red' : (gp < -0.05 ? 'green' : ''));
+      setText('grid-direction',
+              gp > 0.05 ? '↓ importing' : (gp < -0.05 ? '↑ exporting' : 'no flow'));
+
+      setText('load-power', fmtPower(c.load_kw));
+      setText('plant-state', c.running_state_str || '—');
+
+      // Energy strip
+      setText('e-pv',   fmt(live.daily_pv_kwh, 2, ' kWh'));
+      setText('e-bc',   fmt(live.batt_daily_charge_kwh,    2, ' kWh'));
+      setText('e-bd',   fmt(live.batt_daily_discharge_kwh, 2, ' kWh'));
+      setText('e-gi',   fmt(live.daily_import_kwh, 2, ' kWh'));
+      setText('e-ge',   fmt(live.daily_export_kwh, 2, ' kWh'));
+      setText('e-mode', c.ems_mode_str || '—');
+
+      // Battery details
+      setText('b-temp',  fmt(live.batt_cell_temp_c,  1, ' °C'));
+      setText('b-cellv', fmt(live.batt_cell_voltage_v, 3, ' V'));
+      setText('b-soh',   fmt(live.batt_soh_pct, 1, ' %'));
+      setText('b-maxchg', fmtPower(live.max_batt_charge_kw));
+      setText('b-maxdis', fmtPower(live.max_batt_discharge_kw));
+      setText('b-avchg',  fmt(live.avail_batt_charge_kwh, 2, ' kWh'));
+      setText('b-avdis',  fmt(live.avail_batt_discharge_kwh, 2, ' kWh'));
+      setText('b-pack',   live.pack_count != null ? live.pack_count : '—');
+
+      // PV strings
+      for (const n of [1,2,3,4]) {
+        const v = live[`pv${n}_v`], a = live[`pv${n}_a`], wv = live[`pv${n}_w`];
+        setText(`pv${n}-w`, wv != null ? fmt(wv, 0, ' W') : '—');
+        setText(`pv${n}-v`, fmt(v, 1, ' V'));
+        setText(`pv${n}-a`, fmt(a, 2, ' A'));
+      }
+      setText('pv-mppt',     live.mppt_count ?? '—');
+      setText('pv-strcount', live.pv_string_count ?? '—');
+      setText('pv-iso',      fmt(live.insulation_resistance_mohm, 1, ' MΩ'));
+      setText('pv-total',    fmtPower(live.pv_power_kw));
+
+      // AC
+      setText('ac-av',  fmt(live.ac_a_v, 1, ' V'));
+      setText('ac-bv',  fmt(live.ac_b_v, 1, ' V'));
+      setText('ac-cv',  fmt(live.ac_c_v, 1, ' V'));
+      setText('ac-aa',  fmt(live.ac_a_a, 2, ' A'));
+      setText('ac-ba',  fmt(live.ac_b_a, 2, ' A'));
+      setText('ac-ca',  fmt(live.ac_c_a, 2, ' A'));
+      setText('ac-lines',
+              `${fmt(live.ac_ab_v, 1)} / ${fmt(live.ac_bc_v, 1)} / ${fmt(live.ac_ca_v, 1)} V`);
+      setText('ac-freq', fmt(live.grid_freq_hz, 2, ' Hz'));
+      setText('ac-pf',   fmt(live.power_factor, 3));
+      setText('ac-pcs',  fmt(live.pcs_internal_temp_c, 1, ' °C'));
+
+      // EV
+      const evSection = document.getElementById('ev-section');
+      const evBadge = document.getElementById('ev-badge');
+      if (c.ev_active) {
+        evSection.classList.remove('idle');
+        evBadge.textContent = 'charging';
+      } else {
+        evSection.classList.add('idle');
+        evBadge.textContent = 'idle';
+      }
+      setText('ev-soc',   fmt(live.ev_vehicle_soc, 1, ' %'));
+      setText('ev-power', fmtPower(live.ev_output_kw));
+      setText('ev-v',     fmt(live.ev_vehicle_v, 1, ' V'));
+      setText('ev-a',     fmt(live.ev_charging_a, 1, ' A'));
+      setText('ev-kwh',   fmt(live.ev_session_kwh, 3, ' kWh'));
+      setText('ev-dur',   fmtDur(live.ev_session_duration_s));
+
+      // Weather
+      setText('w-poa',   fmt(w.radiation_wm2, 0, ' W/m²'));
+      setText('w-amb',   fmt(w.ambient_temp_c, 1, ' °C'));
+      setText('w-mod',   fmt(w.module_temp_c, 1, ' °C'));
+      setText('w-wind',  fmt(w.wind_speed_ms, 1, ' m/s'));
+      setText('w-hum',   fmt(w.humidity_pct, 1, ' %'));
+      setText('w-press', w.air_pressure_pa != null ? fmt(w.air_pressure_pa / 100, 1, ' hPa') : '—');
+
+      // Header meta
+      const tsStr = new Date(s.ts).toLocaleTimeString('en-AU');
+      const ss = s.sigen_status || {};
+      const lastRead = ss.last_read ? Math.floor((Date.now() - new Date(ss.last_read).getTime()) / 1000) + 's' : '—';
+      setText('header-meta',
+              `Last: ${tsStr} · Sigen ${ss.connected ? 'OK' : 'OFFLINE'} (read ${lastRead} ago) · `
+              + `EMS: ${c.ems_mode_str || '—'} · ${c.ongrid_str || '—'}`);
+    } catch (e) {
+      console.warn(e);
+      document.getElementById('offline-banner').classList.add('show');
+    }
+  }
+
+  async function refreshHistory() {
+    try {
+      const r = await noCacheFetch('/api/history');
+      const h = await r.json();
+      const labels = (h.timestamps || []).map(t => (t || '').split('T')[1]?.slice(0, 8) || t);
+
+      powerChart.data.labels = labels;
+      powerChart.data.datasets[0].data = h.pv_power || [];
+      powerChart.data.datasets[1].data = h.battery_power || [];
+      powerChart.data.datasets[2].data = h.grid_power || [];
+      powerChart.update('none');
+
+      socChart.data.labels = labels;
+      socChart.data.datasets[0].data = h.battery_soc || [];
+      socChart.update('none');
+
+      acChart.data.labels = labels;
+      acChart.data.datasets[0].data = h.ac_a_v || [];
+      acChart.data.datasets[1].data = h.ac_b_v || [];
+      acChart.data.datasets[2].data = h.ac_c_v || [];
+      acChart.update('none');
+
+      tempChart.data.labels = labels;
+      tempChart.data.datasets[0].data = h.cell_temp || [];
+      tempChart.data.datasets[1].data = h.pcs_temp || [];
+      tempChart.data.datasets[2].data = h.ambient_temp || [];
+      tempChart.update('none');
+    } catch (e) { console.warn(e); }
+  }
+
+  refreshState(); refreshHistory();
+  setInterval(refreshState, 1000);
+  setInterval(refreshHistory, 30000);
+})();
+</script>
+</body>
+</html>
