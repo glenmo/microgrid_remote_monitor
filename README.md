@@ -80,7 +80,8 @@ directly (rubberduck) or replaying push payloads from the Pi (VPS).
 | --- | --- |
 | `app.py` | Flask app that runs on rubberduck. Polls Solis (Modbus TCP), SP Pro, and optionally SwitchDin Stormcloud. Serves `combined_v2.html` on `:5000`. |
 | `sppro_reader.py` | SP Pro Modbus TCP reader. Used when the SP Pro Modbus interface is enabled. |
-| `sppro_sx_reader.py` | SP Pro selpi-protocol reader (TCP 10001 with password). Production reader on rubberduck. Local-only, not yet committed to `main`. |
+| `sppro_sx_reader.py` | SP Pro selpi-protocol reader (TCP 10001 with password). Production reader on rubberduck. Wraps the vendored `selpi` library in `vendor/selpi/`. |
+| `vendor/selpi/` | Vendored Selectronic Sx-protocol library (auth + decode) used by `sppro_sx_reader.py`. Runtime-only copy. |
 | `switchdin_reader.py` | Pulls SP Pro telemetry via SwitchDin's Stormcloud cloud API. Optional — needs username + password. |
 | `eastron_reader.py` | Legacy Eastron SDM630MCT energy-meter reader. Retired in current deployment. |
 | `data_pusher.py` | Runs alongside `app.py` on rubberduck. Every 60 s, fetches the local `/api/*/data` endpoints and POSTs them to the VPS at `/api/push`. |
@@ -151,7 +152,7 @@ Solis (Modbus TCP)
 SP Pro (selpi or Modbus TCP)
 --sppro-ip         SP Pro IP                         (default: 192.168.11.240)
 --sppro-port       SP Pro selpi TCP port             (default: 10001)
---sppro-password   selpi password                    (default: selectronic)
+--sppro-password   selpi password (REQUIRED for selpi) (default: none)
 --sppro-poll       SP Pro poll interval (seconds)    (default: 10)
 --no-sppro         Disable the SP Pro reader
 
@@ -272,9 +273,7 @@ python app.py --solis-ip 127.0.0.1 --solis-port 5020 --no-sppro --no-switchdin
 ## Editing workflow
 
 The Pi (rubberduck) clones into `/home/glen/microgrid_remote_monitor/`
-and may carry uncommitted local changes — for example, the production
-SP Pro reader uses the Selectronic selpi protocol and lives in
-`sppro_sx_reader.py`, which isn't yet on `main`. The intended flow is:
+and may carry uncommitted local changes. The intended flow is:
 
 ```
 Edit on Mac (Dropbox)  →  git push  →  git pull on Pi  →  systemctl restart
@@ -293,6 +292,39 @@ sudo systemctl restart microgrid-monitor.service
 ## Operational notes / known issues
 
 A few things to remember if SP Pro data goes silent:
+
+### selpi "Attempted to start multiple logins" is misleading
+
+This `ValidationException` (raised in `vendor/selpi/memory/protocol.py`)
+does **not** mean a second client holds the session. It fires when a query
+gets **zero bytes back**, so `query()` retries via `login()`, whose own
+challenge-query also gets nothing, tripping a re-entrancy guard. So the
+real meaning is **"the SP Pro returned no valid Sx data."** Don't chase
+password variants when you see it — check the serial link instead. A
+*passing* login that then says `Login failed` (status ≠ 1) is the genuine
+wrong-password signal.
+
+### SP Pro data reads require an authenticated session
+
+Data-region reads (e.g. `0xa028`) are silently ignored until selpi has
+logged in; only the login region (`0x1f0000`) answers without auth. The
+correct selpi password is the SP Pro's **Sx access password** (the
+Selectronic Sx default, as used in the upstream selpi tests) — *not*
+`selectronic`. The unit ran the wrong password for months and only worked
+because a **USB SP-LINK PC held an authenticated session** that selpi rode
+on; unplugging SP-LINK exposed the bad password and SP Pro data stopped.
+Pass the real password via `--sppro-password` in the systemd unit. To
+verify a candidate password live: `./venv/bin/python selpi_probe.py
+--password "..."`.
+
+### Lantronix xDirect bridge (single TCP client)
+
+The SP Pro reaches the LAN through a Lantronix xDirect232 serial bridge
+(57600 8N1, no flow control) on TCP `10001`. It allows **one TCP client
+at a time** and needs a few seconds to release the slot between
+connections — back-to-back connects get `Connection refused`. If reads
+stall after a power blip, confirm the bridge's serial settings still match
+the SP Pro, or power-cycle the xDirect to clear a wedged serial buffer.
 
 ### SwitchDin Droplet steals the selpi socket
 
