@@ -586,6 +586,12 @@ def index():
     return render_template("combined_v2.html")
 
 
+@app.route("/flow")
+def flow_diagram():
+    """Serve the simplified microgrid power-flow diagram (non-technical view)."""
+    return render_template("flow_diagram.html")
+
+
 @app.route("/api/data")
 def api_data():
     """Return current inverter data as JSON."""
