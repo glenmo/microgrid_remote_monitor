@@ -276,12 +276,15 @@ async function tick() {
   updateBattery('v-pbat', 'soc-pbat', 't-pbat', spproOn?sppro.battery_soc:null, spproOn?sppro.battery_w:null, true);
   setFlow('f-pbat', 'l-pbat', spproOn?sppro.battery_w:null, { invert:false });
 
-  // Generator: grid_w = ACGeneratorPower. Running when above threshold.
+  // Generator: grid_w = ACGeneratorPower. The SP Pro reports this NEGATIVE when
+  // the generator is supplying power into the system, so invert:true makes a
+  // supplying generator flow forward (generator -> SP Pro). Running when |gw|
+  // is above the autostart-load threshold.
   const gw = spproOn ? num(sppro.grid_w) : null;
   if (gw === null) { setText('v-gen', 'offline'); }
   else if (Math.abs(gw) < 200) { setText('v-gen', '22 kVA · idle'); }
   else { setText('v-gen', '22 kVA · running ' + kW(Math.abs(gw))); }
-  setFlow('f-gen', 'l-gen', gw, { invert:false, color:POS });
+  setFlow('f-gen', 'l-gen', gw, { invert:true, color:POS });
 
   // SP Pro -> microgrid: use SP Pro AC load output (load_w) as its bus contribution.
   setFlow('f-sppro', 'l-sppro', spproOn?sppro.load_w:null, { invert:false, color:GRID });
