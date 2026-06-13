@@ -302,6 +302,12 @@ def dashboard():
     return render_template("combined_v2.html")
 
 
+@app.route("/flow")
+def flow_diagram():
+    """Public microgrid power-flow diagram (non-technical view)."""
+    return render_template("flow_diagram.html")
+
+
 @app.route("/combined/")
 def combined_dashboard():
     return render_template("server_combined_dashboard.html")
