@@ -32,6 +32,7 @@ from eastron_reader import EastronModbusReader
 from sppro_reader import SPProModbusReader
 from sppro_sx_reader import SPProSxReader
 from switchdin_reader import SwitchDinReader
+from solis_cloud_reader import SolisCloudReader
 
 # NOTE: pymodbus v3.6+ uses 'device_id' parameter.
 # If using an older version (v3.0-3.5), change 'device_id' to 'slave' in
@@ -758,6 +759,21 @@ def main():
     parser.add_argument("--no-solis", action="store_true",
                         help="Disable the Solis inverter reader")
 
+    # Solis inverter — SolisCloud API (used instead of Modbus when set)
+    parser.add_argument("--solis-cloud-key-id", default=None,
+                        help="SolisCloud API key ID (enables cloud Solis source)")
+    parser.add_argument("--solis-cloud-key-secret", default=None,
+                        help="SolisCloud API key secret")
+    parser.add_argument("--solis-cloud-sn", default=None,
+                        help="SolisCloud inverter serial number")
+    parser.add_argument("--solis-cloud-id", default=None,
+                        help="SolisCloud inverter id (optional, alongside SN)")
+    parser.add_argument("--solis-cloud-base-url",
+                        default="https://www.soliscloud.com:13333",
+                        help="SolisCloud API base URL")
+    parser.add_argument("--solis-cloud-poll", type=int, default=60,
+                        help="SolisCloud poll interval in seconds (default: 60)")
+
     # Eastron energy meter — via Modbus TCP gateway
     parser.add_argument("--eastron-ip", default="192.168.11.214",
                         help="Eastron meter Modbus TCP gateway IP (default: 192.168.11.214)")
@@ -816,12 +832,18 @@ def main():
     eastron_ip = args.gateway_ip or args.eastron_ip
     eastron_port = args.gateway_port or args.eastron_port
 
-    # If both devices share the same IP:port, create a single shared Modbus TCP
-    # connection.  RS485 is half-duplex so only one reader can use it at a time;
-    # the bus_lock ensures this.
+    # SolisCloud takes over the Solis source when API creds are supplied — the
+    # local Modbus Solis is then skipped (its gateway may be down).
+    use_cloud_solis = bool(args.solis_cloud_key_id and args.solis_cloud_key_secret
+                           and args.solis_cloud_sn)
+    modbus_solis = not args.no_solis and not use_cloud_solis
+
+    # If both Modbus devices share the same IP:port, create a single shared
+    # Modbus TCP connection.  RS485 is half-duplex so only one reader can use
+    # it at a time; the bus_lock ensures this.
     shared_client = None
     bus_lock = None
-    both_enabled = not args.no_solis and not args.no_eastron
+    both_enabled = modbus_solis and not args.no_eastron
     same_gateway = (solis_ip == eastron_ip and solis_port == eastron_port)
 
     if both_enabled and same_gateway:
@@ -838,8 +860,20 @@ def main():
             log.info(f"Shared Modbus TCP connection established")
         bus_lock = threading.Lock()
 
-    # Start Solis reader
-    if not args.no_solis:
+    # Start Solis reader — SolisCloud API when creds given, else local Modbus
+    if use_cloud_solis:
+        log.info(f"Solis source: SolisCloud API (sn={args.solis_cloud_sn}, "
+                 f"every {args.solis_cloud_poll}s)")
+        reader = SolisCloudReader(
+            key_id=args.solis_cloud_key_id,
+            key_secret=args.solis_cloud_key_secret,
+            inverter_sn=args.solis_cloud_sn,
+            inverter_id=args.solis_cloud_id,
+            base_url=args.solis_cloud_base_url,
+            poll_interval=args.solis_cloud_poll,
+        )
+        reader.start()
+    elif modbus_solis:
         reader = SolisModbusReader(
             inverter_ip=solis_ip,
             inverter_port=solis_port,
