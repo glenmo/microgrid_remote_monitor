@@ -171,7 +171,7 @@
   <div class="node" id="n-grid" style="left:500px; top:520px; min-width:170px;">
     <div class="icon ic-grid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><div class="name">Microgrid</div>
     <div class="val" id="v-grid">— kW</div>
-    <div class="tag">measured by meter</div>
+    <div class="tag">total load</div>
   </div>
 
   <div class="node" id="n-home" style="left:500px; top:675px;">
@@ -241,16 +241,14 @@ function updateBattery(socId, fillId, tagId, soc, powerW, chargePositive) {
 }
 
 async function tick() {
-  const [solis, solisSt, sppro, spproSt, east, eastSt] = await Promise.all([
+  const [solis, solisSt, sppro, spproSt] = await Promise.all([
     noCacheFetch('/api/solis/data').then(r=>r.json()).catch(()=>({})),
     noCacheFetch('/api/solis/status').then(r=>r.json()).catch(()=>({})),
     noCacheFetch('/api/sppro/data').then(r=>r.json()).catch(()=>({})),
     noCacheFetch('/api/sppro/status').then(r=>r.json()).catch(()=>({})),
-    noCacheFetch('/api/eastron/data').then(r=>r.json()).catch(()=>({})),
-    noCacheFetch('/api/eastron/status').then(r=>r.json()).catch(()=>({})),
   ]);
 
-  const solisOn = !!solisSt.connected, spproOn = !!spproSt.connected, eastOn = !!eastSt.connected;
+  const solisOn = !!solisSt.connected, spproOn = !!spproSt.connected;
 
   // ---- Solar (Solis PV) ----
   setOffline('n-solar', !solisOn);
@@ -265,8 +263,11 @@ async function tick() {
   updateBattery('v-sbat', 'soc-sbat', 't-sbat', solisOn?solis.battery_soc:null, solisOn?solis.battery_power:null, true);
   // battery flow path drawn Solis -> battery (forward = charging)
   setFlow('f-sbat', 'l-sbat', solisOn?solis.battery_power:null, { invert:false });
-  // active_power: + = export to microgrid (path drawn Solis -> microgrid)
-  setFlow('f-solis', 'l-solis', solisOn?solis.active_power:null, { invert:false, color:GRID });
+  // Solis power delivered to the bus = PV minus what its own battery absorbs
+  // (battery_power > 0 = charging). Derived from sources, so it can never show
+  // an export with no PV/battery behind it — SolisCloud's psum can lag/glitch.
+  const solisToBus = solisOn ? (num(solis.pv_total_power) - num(solis.battery_power)) : null;
+  setFlow('f-solis', 'l-solis', solisToBus, { invert:false, color:GRID });
 
   // ---- SP PRO battery + generator + SP PRO -> microgrid ----
   setOffline('n-sppro', !spproOn);
@@ -289,16 +290,21 @@ async function tick() {
   // SP Pro -> microgrid: use SP Pro AC load output (load_w) as its bus contribution.
   setFlow('f-sppro', 'l-sppro', spproOn?sppro.load_w:null, { invert:false, color:GRID });
 
-  // ---- Microgrid meter -> consumption ----
-  setOffline('n-grid', !eastOn);
-  setOffline('n-home', !eastOn);
-  const cons = eastOn ? num(east.total_power) : null;
-  setText('v-grid', cons === null ? 'meter offline' : kW(Math.abs(cons)));
-  setText('v-home', cons === null ? '—' : kW(Math.abs(cons)));
+  // ---- Microgrid bus -> consumption ----
+  // No single total-consumption meter exists: the Eastron sits at the Solis's
+  // grid connection (= the Solis->bus power shown above). The SP Pro's load_w
+  // reads its own (net) share, so total load = SP Pro load + Solis export.
+  const spLoad = spproOn ? num(sppro.load_w) : null;
+  const solisExport = (solisToBus !== null) ? Math.max(0, solisToBus) : 0;
+  const cons = (spLoad === null) ? null : spLoad + solisExport;
+  setOffline('n-grid', cons === null);
+  setOffline('n-home', cons === null);
+  setText('v-grid', cons === null ? 'no data' : kW(cons));
+  setText('v-home', cons === null ? '—' : kW(cons));
   setFlow('f-load', 'l-load', cons, { invert:false, color:NEG });
 
   // ---- updated stamp ----
-  const stamps = [solisSt.last_read, spproSt.last_read, eastSt.last_read].filter(Boolean).map(s=>new Date(s).getTime());
+  const stamps = [solisSt.last_read, spproSt.last_read].filter(Boolean).map(s=>new Date(s).getTime());
   const newest = stamps.length ? Math.max(...stamps) : null;
   const u = document.getElementById('updated');
   if (!newest) { u.textContent = 'no live data yet'; u.classList.add('warn'); }
