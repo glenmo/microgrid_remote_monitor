@@ -261,8 +261,10 @@ async function tick() {
   setOffline('n-sbat', !solisOn);
   // Solis convention: battery_power > 0 = charging (matches dashboard)
   updateBattery('v-sbat', 'soc-sbat', 't-sbat', solisOn?solis.battery_soc:null, solisOn?solis.battery_power:null, true);
-  // battery flow path drawn Solis -> battery (forward = charging)
-  setFlow('f-sbat', 'l-sbat', solisOn?solis.battery_power:null, { invert:false });
+  // battery flow path drawn Solis -> battery (forward = charging); colour
+  // green when charging, orange when discharging, to match the legend.
+  setFlow('f-sbat', 'l-sbat', solisOn?solis.battery_power:null,
+          { invert:false, color: (num(solis.battery_power) > 0 ? POS : NEG) });
   // Solis power delivered to the bus = PV minus what its own battery absorbs
   // (battery_power > 0 = charging). Derived from sources, so it can never show
   // an export with no PV/battery behind it — SolisCloud's psum can lag/glitch.
@@ -275,7 +277,8 @@ async function tick() {
   setOffline('n-gen', !spproOn);
   // SP Pro dashboard convention: battery_w > 0 = charging
   updateBattery('v-pbat', 'soc-pbat', 't-pbat', spproOn?sppro.battery_soc:null, spproOn?sppro.battery_w:null, true);
-  setFlow('f-pbat', 'l-pbat', spproOn?sppro.battery_w:null, { invert:false });
+  setFlow('f-pbat', 'l-pbat', spproOn?sppro.battery_w:null,
+          { invert:false, color: (num(sppro.battery_w) > 0 ? POS : NEG) });
 
   // Generator: grid_w = ACGeneratorPower. The SP Pro reports this NEGATIVE when
   // the generator is supplying power into the system, so invert:true makes a
