@@ -120,14 +120,15 @@ class SolisCloudReader:
 
     def _map(self, d):
         """Map a SolisCloud inverterDetail dict to our /api/solis/data shape."""
-        # Battery sign: SolisCloud reports magnitude in batteryPower with a
-        # direction flag. Inferred from the AC energy balance (AC output >
-        # PV => battery discharging): batteryDirection 0 = charging,
-        # 1 = discharging. Re-verify if charge/discharge ever looks inverted.
-        bat_mag = self._watts(d, "batteryPower")
+        # Battery sign: this inverter/firmware returns a SIGNED batteryPower
+        # (negative = discharging, positive = charging) — already in the
+        # convention the dashboard/flow expect (+ = charging), so use it
+        # directly. The batteryDirection flag is NOT a reliable charge/discharge
+        # indicator here: it emits codes like 2/3, not the documented
+        # 0 (charge) / 1 (discharge), so keying the sign off it inverted a
+        # discharging battery into a charging one.
+        battery_power = self._watts(d, "batteryPower")
         direction = d.get("batteryDirection")
-        charging = (str(direction) == "0")
-        battery_power = bat_mag if charging else -bat_mag  # +charging (dashboard)
 
         # powTotal is often empty on this firmware; sum the PV string powers.
         pv_total = round(sum(self._watts(d, f"pow{i}") for i in range(1, 33)), 1)
