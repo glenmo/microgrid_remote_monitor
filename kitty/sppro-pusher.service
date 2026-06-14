@@ -1,0 +1,20 @@
+[Unit]
+Description=SP PRO USB reader -> push telemetry to rubberduck
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=glen
+SupplementaryGroups=dialout
+Environment="INGEST_URL=http://rubberduck.local:5000/api/sppro/ingest"
+Environment="SPPRO_SERIAL=/dev/ttyACM0"
+Environment="SPPRO_PASSWORD=Selectronic SP PRO"
+Environment="SPPRO_POLL=10"
+WorkingDirectory=/home/glen/microgrid_remote_monitor
+ExecStart=/usr/bin/python3 /home/glen/microgrid_remote_monitor/kitty/sppro_pusher.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

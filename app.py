@@ -575,6 +575,7 @@ class SolisModbusReader:
 reader: SolisModbusReader = None
 eastron: EastronModbusReader = None
 sppro: SPProModbusReader = None
+sppro_ingest_token = None
 switchdin: SwitchDinReader = None
 
 
@@ -686,6 +687,21 @@ def api_sppro_status():
     return jsonify(sppro.get_status())
 
 
+@app.route("/api/sppro/ingest", methods=["POST"])
+def api_sppro_ingest():
+    """Receive SP Pro telemetry POSTed by a remote reader (e.g. kitty, which
+    reads the SP Pro locally over USB and pushes here). Only meaningful when
+    started with --sppro-source push. Payload: {"data": {...}, "status": {...}}
+    exactly as produced by SPProSxReader.get_data()/get_status()."""
+    if sppro is None or not hasattr(sppro, "ingest"):
+        return jsonify({"error": "SP Pro not in push mode"}), 409
+    if sppro_ingest_token and request.headers.get("X-Ingest-Token") != sppro_ingest_token:
+        return jsonify({"error": "unauthorized"}), 401
+    payload = request.get_json(force=True, silent=True) or {}
+    sppro.ingest(payload)
+    return jsonify({"ok": True})
+
+
 # ---------------------------------------------------------------------------
 # SwitchDin (SP Pro via Stormcloud) API routes
 # ---------------------------------------------------------------------------
@@ -735,7 +751,7 @@ def api_message():
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
-    global reader, eastron, sppro, switchdin
+    global reader, eastron, sppro, switchdin, sppro_ingest_token
 
     parser = argparse.ArgumentParser(
         description="Microgrid Remote Monitor — Solis Inverter + Eastron Energy Meter"
@@ -795,6 +811,15 @@ def main():
                         help="SP Pro poll interval in seconds (default: 5)")
     parser.add_argument("--sppro-password", default=None,
                         help="SP Pro password (uses selpi protocol when set)")
+    parser.add_argument("--sppro-source", choices=["auto", "sx", "modbus", "push"],
+                        default="auto",
+                        help="SP Pro data source: auto (sx if password else modbus), "
+                             "sx (selpi over a serial<->TCP bridge), modbus, or "
+                             "push (serve data POSTed to /api/sppro/ingest by a "
+                             "remote reader such as kitty over USB). Default: auto")
+    parser.add_argument("--sppro-ingest-token", default=None,
+                        help="If set, /api/sppro/ingest requires this value in "
+                             "the X-Ingest-Token header (push mode)")
     parser.add_argument("--no-sppro", action="store_true",
                         help="Disable the SP Pro inverter reader")
 
@@ -823,6 +848,7 @@ def main():
     parser.add_argument("--poll-interval", type=int, default=None, help=argparse.SUPPRESS)
 
     args = parser.parse_args()
+    sppro_ingest_token = args.sppro_ingest_token
 
     # Legacy arg mapping — old args override new ones if provided
     solis_ip = args.inverter_ip or args.gateway_ip or args.solis_ip
@@ -896,9 +922,17 @@ def main():
         )
         eastron.start()
 
-    # Start SP Pro reader (direct Modbus — disabled by default now)
+    # Start SP Pro reader. Sources:
+    #   push   — receive telemetry POSTed by a remote USB reader (kitty)
+    #   sx     — selpi over a serial<->TCP bridge (legacy Lantronix)
+    #   modbus — direct Modbus TCP
+    #   auto   — sx when a password is given, else modbus
     if not args.no_sppro:
-        if args.sppro_password:
+        if args.sppro_source == "push":
+            from sppro_push_receiver import SPProPushReceiver
+            sppro = SPProPushReceiver(stale_after=max(20, args.sppro_poll * 3))
+        elif args.sppro_source == "sx" or (args.sppro_source == "auto"
+                                           and args.sppro_password):
             sppro = SPProSxReader(
                 host=args.sppro_ip,
                 port=args.sppro_port,

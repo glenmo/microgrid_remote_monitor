@@ -43,6 +43,23 @@ def _set_selpi_env(host, port, password):
     os.environ["SELPI_SPPRO_PASSWORD"]          = password or ""
 
 
+def _set_selpi_env_serial(serial_port, baudrate, password):
+    """Configure selpi to read the SP Pro over a local serial port.
+
+    Used on `kitty`, which is cabled by USB directly into the SP Pro's
+    Advanced Comms Board (CDC-ACM at /dev/ttyACM0) — no Lantronix, no
+    network hop. selpi opens the port with pyserial (DTR/RTS asserted on
+    open), which is what the comms board needs to start talking.
+    """
+    os.environ["SELPI_CONNECTION_TYPE"]            = "Serial"
+    os.environ["SELPI_CONNECTION_SERIAL_PORT"]     = serial_port
+    os.environ["SELPI_CONNECTION_SERIAL_BAUDRATE"] = str(baudrate)
+    os.environ["SELPI_SPPRO_PASSWORD"]             = password or ""
+    # Drop any stale TCP vars so selpi can't be misled by a previous config.
+    os.environ.pop("SELPI_CONNECTION_TCP_HOSTNAME", None)
+    os.environ.pop("SELPI_CONNECTION_TCP_PORT", None)
+
+
 def _drain_lantronix_buffer(host, port, drain_ms=300):
     """Open a quick TCP socket, read+discard whatever is buffered, close.
 
@@ -113,7 +130,14 @@ class SPProSxReader:
     """Polls a Selectronic SP Pro 2 via the Sx protocol over TCP."""
 
     def __init__(self, host="192.168.11.240", port=10001,
-                 password="", poll_interval=10):
+                 password="", poll_interval=10,
+                 transport="tcp", serial_port="/dev/ttyACM0", baudrate=57600):
+        # transport: "tcp" = via a Lantronix-style serial<->TCP bridge
+        #            "serial" = direct local serial (e.g. kitty over USB)
+        self.transport = transport
+        self.serial_port = serial_port
+        self.baudrate = baudrate
+
         self.host = host
         self.port = port
         self.password = password
@@ -162,6 +186,13 @@ class SPProSxReader:
             # Brief grace period for the Lantronix to release the
             # previous TCP session before we reconnect.
             time.sleep(self._RECONNECT_GRACE_S)
+
+        if self.transport == "serial":
+            _set_selpi_env_serial(self.serial_port, self.baudrate, self.password)
+            self._selpi_stats = Statistics()
+            log.info(f"SP Pro: selpi configured for serial "
+                     f"{self.serial_port}@{self.baudrate}")
+            return
 
         _set_selpi_env(self.host, self.port, self.password)
         # Drain any stale bytes the Lantronix has buffered from a previous
@@ -233,7 +264,9 @@ class SPProSxReader:
             self._stop_event.wait(self.poll_interval)
 
     def start(self):
-        log.info(f"SP Pro: polling started ({self.host}:{self.port}, "
+        endpoint = (self.serial_port if self.transport == "serial"
+                    else f"{self.host}:{self.port}")
+        log.info(f"SP Pro: polling started ({self.transport} {endpoint}, "
                  f"every {self.poll_interval}s)")
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._poll_loop, daemon=True)
@@ -255,9 +288,12 @@ class SPProSxReader:
 
     def get_status(self):
         with self.lock:
+            endpoint = (self.serial_port if self.transport == "serial"
+                        else f"{self.host}:{self.port}")
             return {
                 "connected":     self.connected,
-                "host":          self.host,
+                "transport":     self.transport,
+                "host":          endpoint,
                 "port":          self.port,
                 "poll_interval": self.poll_interval,
                 "total_reads":   self.total_reads,
