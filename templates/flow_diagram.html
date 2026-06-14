@@ -290,16 +290,29 @@ async function tick() {
   else { setText('v-gen', '22 kVA · running ' + kW(Math.abs(gw))); }
   setFlow('f-gen', 'l-gen', gw, { invert:true, color:POS });
 
-  // SP Pro -> microgrid: use SP Pro AC load output (load_w) as its bus contribution.
-  setFlow('f-sppro', 'l-sppro', spproOn?sppro.load_w:null, { invert:false, color:GRID });
+  // SP Pro <-> microgrid bus: the SP Pro's NET AC power to the bus.
+  //   + = exporting to the bus (battery discharging, or generator passing through)
+  //   - = drawing FROM the bus (charging its battery from the AC-coupled Solis)
+  // The SP Pro is grid-forming on a shared AC bus and charges its battery from
+  // the Solis's AC-coupled export (battery_w > 0 = charging), so a charging
+  // SP Pro is a *sink* on the bus: power flows microgrid -> SP Pro, not an
+  // export. (Previously this used load_w alone, so battery charging from the bus
+  // was invisible and the entire Solis export looked like consumption.)
+  // NB: on this install load_w / solarinverter_w read 0 (the SP Pro doesn't
+  // meter the bus loads or the Solis), so the net is battery charge + generator.
+  const spBatt    = spproOn ? num(sppro.battery_w) : null;   // + = charging
+  const genSupply = (gw !== null && gw < -200) ? -gw : 0;    // generator feeding in
+  const spproToBus = (spBatt === null) ? null : (-spBatt + genSupply);
+  setFlow('f-sppro', 'l-sppro', spproToBus,
+          { invert:false, color: (spproToBus >= 0 ? GRID : POS) });
 
   // ---- Microgrid bus -> consumption ----
-  // No single total-consumption meter exists: the Eastron sits at the Solis's
-  // grid connection (= the Solis->bus power shown above). The SP Pro's load_w
-  // reads its own (net) share, so total load = SP Pro load + Solis export.
-  const spLoad = spproOn ? num(sppro.load_w) : null;
-  const solisExport = (solisToBus !== null) ? Math.max(0, solisToBus) : 0;
-  const cons = (spLoad === null) ? null : spLoad + solisExport;
+  // Real consumption = total injected onto the AC bus minus what storage absorbs.
+  // Solis (solisToBus) and SP Pro (spproToBus) both report NET power to the bus
+  // (charging is negative), so the actual load is their sum, clamped at >= 0.
+  const busInjection = (solisToBus === null && spproToBus === null) ? null
+                       : (num(solisToBus) || 0) + (num(spproToBus) || 0);
+  const cons = (busInjection === null) ? null : Math.max(0, busInjection);
   setOffline('n-grid', cons === null);
   setOffline('n-home', cons === null);
   setText('v-grid', cons === null ? 'no data' : kW(cons));
