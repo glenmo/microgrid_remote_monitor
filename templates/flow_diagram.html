@@ -20,24 +20,28 @@
     --border: #334155;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body {
     background: var(--bg-primary); color: var(--text-primary);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    min-height: 100vh; padding: 16px;
+    display: flex; flex-direction: column; overflow: hidden;
   }
-  header { text-align: center; margin-bottom: 8px; }
-  header h1 { font-size: clamp(18px, 3.2vw, 28px); font-weight: 700; }
+  header { text-align: center; padding: 10px 8px 4px; flex: 0 0 auto; }
+  header h1 { font-size: clamp(18px, 3.2vw, 30px); font-weight: 700; }
   header .sub { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
   #updated { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
   #updated.warn { color: var(--accent-orange); }
 
-  /* Scaled, fixed-aspect stage so the layout never reflows oddly */
-  .stage-wrap { width: 100%; display: flex; justify-content: center; }
+  /* The stage is drawn at a fixed design size and scaled uniformly to fill
+     whatever space is available, so wires, node tiles and battery icons all
+     grow together rather than the diagram getting marooned in the middle of a
+     large display. */
+  .stage-wrap { position: relative; flex: 1 1 auto; min-height: 0; }
   .stage {
-    position: relative;
-    width: 1000px; height: 740px;
-    max-width: 100%;
-    aspect-ratio: 1000 / 740;
+    position: absolute; left: 50%; top: 50%;
+    width: 1200px; height: 700px;
+    transform-origin: center center;
+    transform: translate(-50%, -50%);
   }
   svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; }
 
@@ -54,7 +58,7 @@
   .flow.rev { animation-direction: reverse; }
   @keyframes dash { to { stroke-dashoffset: -18; } }
   .wlabel {
-    fill: var(--text-primary); font-size: 15px; font-weight: 700;
+    fill: var(--text-primary); font-size: 16px; font-weight: 700;
     text-anchor: middle; paint-order: stroke;
     stroke: var(--bg-primary); stroke-width: 4px;
   }
@@ -64,31 +68,43 @@
   .node {
     position: absolute; transform: translate(-50%, -50%);
     background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 14px; padding: 10px 12px; text-align: center;
-    min-width: 132px; box-shadow: 0 4px 14px rgba(0,0,0,.35);
+    border-radius: 14px; padding: 10px 14px; text-align: center;
+    min-width: 140px; box-shadow: 0 4px 14px rgba(0,0,0,.35);
     transition: border-color .4s, opacity .4s;
   }
   .node.offline { opacity: .45; }
-  .node .icon { height: 32px; display: flex; align-items: center; justify-content: center; }
-  .node .icon svg { width: 30px; height: 30px; }
+  .node .icon { height: 34px; display: flex; align-items: center; justify-content: center; }
+  .node .icon svg { width: 32px; height: 32px; }
   .ic-solar { color: var(--accent-yellow); }
   .ic-gen   { color: var(--accent-orange); }
   .ic-inv   { color: var(--accent-blue); }
   .ic-bat   { color: var(--accent-green); }
   .ic-grid  { color: var(--accent-blue); }
   .ic-home  { color: var(--text-primary); }
-  .node .name { font-size: 13px; font-weight: 700; margin-top: 3px; }
-  .node .val  { font-size: 17px; font-weight: 800; margin-top: 2px; }
+  .node .name { font-size: 14px; font-weight: 700; margin-top: 3px; }
+  .node .name .cap { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-top: 1px; }
+  .node .val  { font-size: 18px; font-weight: 800; margin-top: 4px; }
   .node .tag  { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
   .node .tag.bad { color: var(--accent-red); }
   .node .tag.ok  { color: var(--accent-green); }
 
-  /* Battery SoC bar */
-  .soc-bar { height: 8px; border-radius: 5px; background: #0b1220; margin-top: 6px; overflow: hidden; }
-  .soc-fill { height: 100%; width: 0%; border-radius: 5px; transition: width .5s, background .5s; }
+  /* Battery nodes anchor by their top edge so the taller Solis pack grows
+     downward into the space below the inverters instead of overlapping them. */
+  .node.battery { transform: translate(-50%, 0); padding-bottom: 12px; }
+  .bat-stacks { display: flex; gap: 12px; justify-content: center; align-items: flex-end; margin-top: 8px; }
+  .bat-stack  { display: flex; flex-direction: column; align-items: center; }
+  .bat-cap    { width: 18px; height: 6px; background: var(--border); border-radius: 3px 3px 0 0; margin-bottom: 2px; }
+  /* column-reverse so the first DOM bar is the bottom one and the pack fills
+     from the bottom up like a real battery gauge. */
+  .bat-body {
+    width: 52px; background: #0b1220; border: 2px solid var(--border);
+    border-radius: 6px; padding: 4px; display: flex; flex-direction: column-reverse; gap: 3px;
+  }
+  .bat-bar { height: 8px; border-radius: 2px; background: #16233b; transition: background .4s; }
+  .bat-stack .pct { font-size: 12px; font-weight: 700; margin-top: 4px; color: var(--text-secondary); }
 
   .legend { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
-            margin-top: 6px; color: var(--text-secondary); font-size: 12px; }
+            padding: 6px 8px 10px; color: var(--text-secondary); font-size: 12px; flex: 0 0 auto; }
   .legend span::before { content: "●"; margin-right: 4px; }
   .lg-gen::before  { color: var(--accent-green); }
   .lg-draw::before { color: var(--accent-orange); }
@@ -104,77 +120,77 @@
 
 <div class="stage-wrap">
 <div class="stage">
-  <svg class="wires" viewBox="0 0 1000 740" preserveAspectRatio="xMidYMid meet">
+  <svg class="wires" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet">
     <!-- static base wires -->
-    <path class="wire" d="M250,108 L250,182"/>
-    <path class="wire" d="M750,108 L750,182"/>
-    <path class="wire" d="M250,268 L250,330"/>
-    <path class="wire" d="M750,268 L750,330"/>
-    <path class="wire" d="M312,262 L452,486"/>
-    <path class="wire" d="M688,262 L548,486"/>
-    <path class="wire" d="M500,566 L500,628"/>
+    <path class="wire" d="M250,118 L250,214"/>
+    <path class="wire" d="M950,118 L950,214"/>
+    <path class="wire" d="M250,288 L250,332"/>
+    <path class="wire" d="M950,288 L950,332"/>
+    <path class="wire" d="M300,280 L550,388"/>
+    <path class="wire" d="M900,280 L650,388"/>
+    <path class="wire" d="M600,478 L600,546"/>
 
     <!-- animated flow overlays (same geometry) -->
-    <path id="f-solar"  class="flow" d="M250,108 L250,182"/>
-    <path id="f-gen"    class="flow" d="M750,108 L750,182"/>
-    <path id="f-sbat"   class="flow" d="M250,268 L250,330"/>
-    <path id="f-pbat"   class="flow" d="M750,268 L750,330"/>
-    <path id="f-solis"  class="flow" d="M312,262 L452,486"/>
-    <path id="f-sppro"  class="flow" d="M688,262 L548,486"/>
-    <path id="f-load"   class="flow" d="M500,566 L500,628"/>
+    <path id="f-solar"  class="flow" d="M250,118 L250,214"/>
+    <path id="f-gen"    class="flow" d="M950,118 L950,214"/>
+    <path id="f-sbat"   class="flow" d="M250,288 L250,332"/>
+    <path id="f-pbat"   class="flow" d="M950,288 L950,332"/>
+    <path id="f-solis"  class="flow" d="M300,280 L550,388"/>
+    <path id="f-sppro"  class="flow" d="M900,280 L650,388"/>
+    <path id="f-load"   class="flow" d="M600,478 L600,546"/>
 
     <!-- flow value labels -->
-    <text id="l-solar"  class="wlabel" x="278" y="150">—</text>
-    <text id="l-gen"    class="wlabel" x="778" y="150">—</text>
-    <text id="l-sbat"   class="wlabel" x="250" y="305">—</text>
-    <text id="l-pbat"   class="wlabel" x="750" y="305">—</text>
-    <text id="l-solis"  class="wlabel" x="384" y="372">—</text>
-    <text id="l-sppro"  class="wlabel" x="616" y="372">—</text>
-    <text id="l-load"   class="wlabel" x="540" y="600">—</text>
+    <text id="l-solar"  class="wlabel" x="282" y="172">—</text>
+    <text id="l-gen"    class="wlabel" x="982" y="172">—</text>
+    <text id="l-sbat"   class="wlabel" x="250" y="316">—</text>
+    <text id="l-pbat"   class="wlabel" x="950" y="316">—</text>
+    <text id="l-solis"  class="wlabel" x="408" y="330">—</text>
+    <text id="l-sppro"  class="wlabel" x="792" y="330">—</text>
+    <text id="l-load"   class="wlabel" x="642" y="518">—</text>
   </svg>
 
   <!-- Nodes -->
-  <div class="node" id="n-solar" style="left:25%; top:8.784%;">
+  <div class="node" id="n-solar" style="left:250px; top:80px;">
     <div class="icon ic-solar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg></div><div class="name">Solar</div>
     <div class="val" id="v-solar">— kW</div>
   </div>
 
-  <div class="node" id="n-gen" style="left:75%; top:8.784%;">
+  <div class="node" id="n-gen" style="left:950px; top:80px;">
     <div class="icon ic-gen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"/></svg></div><div class="name">Diesel Generator</div>
     <div class="tag" id="v-gen">22 kVA · idle</div>
   </div>
 
-  <div class="node" id="n-solis" style="left:25%; top:30.405%;">
-    <div class="icon ic-inv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M6 14c1.5 0 1.5-4 3-4s1.5 4 3 4 1.5-4 3-4 1.5 4 3 4"/></svg></div><div class="name">Solis Inverter</div>
+  <div class="node" id="n-solis" style="left:250px; top:250px;">
+    <div class="icon ic-inv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M6 14c1.5 0 1.5-4 3-4s1.5 4 3 4 1.5-4 3-4 1.5 4 3 4"/></svg></div><div class="name">Solis Inverter <span class="cap">50 kW hybrid</span></div>
     <div class="tag">A.C.-coupled + solar</div>
   </div>
 
-  <div class="node" id="n-sppro" style="left:75%; top:30.405%;">
-    <div class="icon ic-inv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M6 14c1.5 0 1.5-4 3-4s1.5 4 3 4 1.5-4 3-4 1.5 4 3 4"/></svg></div><div class="name">SP PRO</div>
+  <div class="node" id="n-sppro" style="left:950px; top:250px;">
+    <div class="icon ic-inv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M6 14c1.5 0 1.5-4 3-4s1.5 4 3 4 1.5-4 3-4 1.5 4 3 4"/></svg></div><div class="name">SP PRO <span class="cap">Selectronic</span></div>
     <div class="tag">grid-forming</div>
   </div>
 
-  <div class="node" id="n-sbat" style="left:25%; top:51.622%;">
-    <div class="icon ic-bat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="18" height="10" rx="2"/><line x1="22" y1="10.5" x2="22" y2="13.5"/></svg></div><div class="name">Solis Battery</div>
+  <div class="node battery" id="n-sbat" style="left:250px; top:330px;">
+    <div class="name">Solis Battery <span class="cap">2 ports × 4 stacks · ~750 kWh</span></div>
+    <div class="bat-stacks" id="stacks-sbat"></div>
     <div class="val" id="v-sbat">— %</div>
-    <div class="soc-bar"><div class="soc-fill" id="soc-sbat"></div></div>
     <div class="tag" id="t-sbat">—</div>
   </div>
 
-  <div class="node" id="n-pbat" style="left:75%; top:51.622%;">
-    <div class="icon ic-bat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="18" height="10" rx="2"/><line x1="22" y1="10.5" x2="22" y2="13.5"/></svg></div><div class="name">SP PRO Battery</div>
+  <div class="node battery" id="n-pbat" style="left:950px; top:330px;">
+    <div class="name">SP PRO Battery <span class="cap">1 stack · ~150 kWh</span></div>
+    <div class="bat-stacks" id="stacks-pbat"></div>
     <div class="val" id="v-pbat">— %</div>
-    <div class="soc-bar"><div class="soc-fill" id="soc-pbat"></div></div>
     <div class="tag" id="t-pbat">—</div>
   </div>
 
-  <div class="node" id="n-grid" style="left:50%; top:70.270%; min-width:170px;">
+  <div class="node" id="n-grid" style="left:600px; top:430px; min-width:180px;">
     <div class="icon ic-grid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><div class="name">Microgrid</div>
     <div class="val" id="v-grid">— kW</div>
     <div class="tag">total load</div>
   </div>
 
-  <div class="node" id="n-home" style="left:50%; top:91.216%;">
+  <div class="node" id="n-home" style="left:600px; top:580px;">
     <div class="icon ic-home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg></div><div class="name">Consumption</div>
     <div class="val" id="v-home">— kW</div>
   </div>
@@ -190,6 +206,17 @@
 <script>
 const POS = 'var(--accent-green)', NEG = 'var(--accent-orange)', GRID = 'var(--accent-blue)';
 const THRESH = 50; // W — below this we treat as idle
+const DESIGN_W = 1200, DESIGN_H = 700;
+
+// Battery icon scale: each bar represents a fixed amount of energy, so a bigger
+// pack literally has more bars. The Solis (~750 kWh over two ports) therefore
+// renders far taller/wider than the SP Pro (~150 kWh, single stack), conveying
+// the real scale difference at a glance.
+const KWH_PER_BAR = 22;
+const BAT_CFG = {
+  sbat: { totalKwh: 750, stacks: 2 },   // Solis: two battery ports, 4 stacks each
+  pbat: { totalKwh: 150, stacks: 1 },   // SP Pro: single battery stack
+};
 
 function noCacheFetch(url) {
   return fetch(url + (url.includes('?') ? '&' : '?') + '_=' + Date.now(), { cache: 'no-store' });
@@ -199,6 +226,64 @@ const num = (v, d=0) => (v === null || v === undefined || isNaN(v)) ? null : Num
 
 function setText(id, t) { const e = document.getElementById(id); if (e) e.textContent = t; }
 function setOffline(id, off) { const e = document.getElementById(id); if (e) e.classList.toggle('offline', off); }
+
+// Scale the fixed-size stage to fill the available space (preserving aspect).
+function fitStage() {
+  const wrap = document.querySelector('.stage-wrap');
+  const stage = document.querySelector('.stage');
+  if (!wrap || !stage) return;
+  const s = Math.min(wrap.clientWidth / DESIGN_W, wrap.clientHeight / DESIGN_H);
+  stage.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
+}
+
+// Build the stacked-battery icons. Each stack is a stylised battery (terminal
+// cap + body) holding a column of horizontal bars; the number of bars is
+// proportional to that stack's capacity.
+function buildStacks() {
+  for (const [prefix, cfg] of Object.entries(BAT_CFG)) {
+    const host = document.getElementById('stacks-' + prefix);
+    if (!host) continue;
+    const perStack = cfg.totalKwh / cfg.stacks;
+    const bars = Math.max(4, Math.round(perStack / KWH_PER_BAR));
+    host.innerHTML = '';
+    for (let st = 0; st < cfg.stacks; st++) {
+      const stack = document.createElement('div'); stack.className = 'bat-stack';
+      const cap = document.createElement('div'); cap.className = 'bat-cap';
+      const body = document.createElement('div'); body.className = 'bat-body';
+      for (let b = 0; b < bars; b++) {
+        const bar = document.createElement('div'); bar.className = 'bat-bar';
+        body.appendChild(bar);
+      }
+      const pct = document.createElement('div'); pct.className = 'pct'; pct.textContent = '—';
+      stack.appendChild(cap); stack.appendChild(body); stack.appendChild(pct);
+      host.appendChild(stack);
+    }
+  }
+}
+
+function socColor(p) { return p >= 50 ? 'var(--accent-green)' : p >= 25 ? 'var(--accent-yellow)' : 'var(--accent-red)'; }
+
+// Fill the bars of every stack under a battery node from the bottom up.
+// `socs` is an array of per-stack SoC values; a single value fills all stacks
+// equally (the live SolisCloud feed reports one combined SoC for the pack).
+function fillStacks(prefix, socs) {
+  const stacks = document.querySelectorAll('#stacks-' + prefix + ' .bat-stack');
+  stacks.forEach((stack, i) => {
+    const s = num(Array.isArray(socs) ? (socs[i] ?? socs[0]) : socs);
+    const bars = stack.querySelectorAll('.bat-bar');
+    const pctEl = stack.querySelector('.pct');
+    if (s === null) {
+      bars.forEach(b => { b.classList.remove('lit'); b.style.background = ''; });
+      if (pctEl) pctEl.textContent = '—';
+      return;
+    }
+    const clamped = Math.max(0, Math.min(100, s));
+    const lit = Math.round(bars.length * clamped / 100);
+    const col = socColor(s);
+    bars.forEach((b, idx) => { b.style.background = idx < lit ? col : ''; });
+    if (pctEl) pctEl.textContent = s.toFixed(0) + '%';
+  });
+}
 
 // Drive one connector: value (W), and `posMeansForward` describes what a positive
 // value means for the drawn path direction (true = flows along the path as drawn).
@@ -222,20 +307,18 @@ function setFlow(flowId, labelId, value, opts) {
   label.textContent = kW(mag);
 }
 
-function socColor(p) { return p >= 50 ? 'var(--accent-green)' : p >= 25 ? 'var(--accent-yellow)' : 'var(--accent-red)'; }
-
-function updateBattery(socId, fillId, tagId, soc, powerW, chargePositive) {
-  const s = num(soc);
-  if (s === null) { setText(socId, '— %'); setText(tagId, 'offline'); return; }
-  setText(socId, s.toFixed(0) + ' %');
-  const fill = document.getElementById(fillId);
-  fill.style.width = Math.max(0, Math.min(100, s)) + '%';
-  fill.style.background = socColor(s);
+// Update a battery node: light its stacks to the SoC and set the power tag.
+// `socs` may be a single combined SoC or an array of per-stack SoCs.
+function updateBattery(prefix, socs, powerW, chargePositive) {
+  const single = num(Array.isArray(socs) ? socs[0] : socs);
+  if (single === null) { setText('v-' + prefix, '— %'); setText('t-' + prefix, 'offline'); fillStacks(prefix, null); return; }
+  setText('v-' + prefix, single.toFixed(0) + ' %');
+  fillStacks(prefix, socs);
   const p = num(powerW);
-  if (p === null || Math.abs(p) < THRESH) { setText(tagId, 'idle'); return; }
+  if (p === null || Math.abs(p) < THRESH) { setText('t-' + prefix, 'idle'); document.getElementById('t-' + prefix).className = 'tag'; return; }
   // chargePositive: does a positive power value mean charging?
   const charging = chargePositive ? (p > 0) : (p < 0);
-  const tag = document.getElementById(tagId);
+  const tag = document.getElementById('t-' + prefix);
   tag.textContent = (charging ? 'charging ' : 'discharging ') + kW(Math.abs(p));
   tag.className = 'tag ' + (charging ? 'ok' : 'bad');
 }
@@ -259,8 +342,13 @@ async function tick() {
 
   // ---- Solis battery + Solis -> microgrid ----
   setOffline('n-sbat', !solisOn);
+  // Two battery ports. SolisCloud reports one combined SoC (battery_soc); if a
+  // per-port second SoC ever appears (bms2_battery_soc) use it for stack 2.
+  const sbatSocs = solisOn
+    ? [num(solis.battery_soc), num(solis.bms2_battery_soc) ?? num(solis.battery_soc)]
+    : null;
   // Solis convention: battery_power > 0 = charging (matches dashboard)
-  updateBattery('v-sbat', 'soc-sbat', 't-sbat', solisOn?solis.battery_soc:null, solisOn?solis.battery_power:null, true);
+  updateBattery('sbat', sbatSocs, solisOn?solis.battery_power:null, true);
   // battery flow path drawn Solis -> battery (forward = charging); colour
   // green when charging, orange when discharging, to match the legend.
   setFlow('f-sbat', 'l-sbat', solisOn?solis.battery_power:null,
@@ -276,7 +364,7 @@ async function tick() {
   setOffline('n-pbat', !spproOn);
   setOffline('n-gen', !spproOn);
   // SP Pro dashboard convention: battery_w > 0 = charging
-  updateBattery('v-pbat', 'soc-pbat', 't-pbat', spproOn?sppro.battery_soc:null, spproOn?sppro.battery_w:null, true);
+  updateBattery('pbat', spproOn?num(sppro.battery_soc):null, spproOn?sppro.battery_w:null, true);
   setFlow('f-pbat', 'l-pbat', spproOn?sppro.battery_w:null,
           { invert:false, color: (num(sppro.battery_w) > 0 ? POS : NEG) });
 
@@ -331,6 +419,9 @@ async function tick() {
   }
 }
 
+buildStacks();
+fitStage();
+window.addEventListener('resize', fitStage);
 tick();
 setInterval(tick, 5000);
 </script>
