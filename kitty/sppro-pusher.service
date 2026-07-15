@@ -8,7 +8,10 @@ Type=simple
 User=glen
 SupplementaryGroups=dialout
 Environment="INGEST_URL=http://rubberduck.local:5000/api/sppro/ingest"
-Environment="SPPRO_SERIAL=/dev/ttyACM0"
+# Stable by-id symlink, not /dev/ttyACM0: the SP Pro's USB comms board
+# re-enumerates on any brief disconnect (e.g. a power blip) and jumps to
+# ttyACM1, which would silently break a numbered path. by-id always tracks it.
+Environment="SPPRO_SERIAL=/dev/serial/by-id/usb-Microchip_Technology_ABC._SP_PRO_-_Advanced_Comms_Board_SPPRO0_403439-if00"
 Environment="SPPRO_PASSWORD=Selectronic SP PRO"
 Environment="SPPRO_POLL=10"
 WorkingDirectory=/home/glen/microgrid_remote_monitor
