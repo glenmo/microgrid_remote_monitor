@@ -71,16 +71,26 @@ class Statistics():
             "ACSolarWhTodayAcc": variable.create("ACSolarWhTodayAcc"),
             "Shunt1WhTodayAcc": variable.create("Shunt1WhTodayAcc"),
             "ACGeneratorPower": variable.create("ACGeneratorPower"),
+            "BatteryVolts": variable.create("BatteryVolts"),
+            "BatteryTemperature": variable.create("BatteryTemperature"),
         }
         self.__update(list(vars.values()))
         timestamp = int(time.time())
+        battery_voltage = vars["BatteryVolts"].get_value(self.scales)
+        battery_w = vars["DCBatteryPower"].get_value(self.scales)
+        # Battery current is not a register on this (unmanaged) battery; derive
+        # it from DC power / voltage. Sign follows power (+ = charging).
+        battery_current = round(battery_w / battery_voltage, 1) if battery_voltage else 0
         items = {
             "battery_in_wh_today": vars["DCkWhInToday"].get_value(self.scales) / 1000,
             "battery_in_wh_total": vars["BattInkWhTotalAcc"].get_value(self.scales) / 1000,
             "battery_out_wh_today": vars["DCkWhOutToday"].get_value(self.scales) / 1000,
             "battery_out_wh_total": vars["BattOutkWhTotalAcc"].get_value(self.scales) / 1000,
             "battery_soc": vars["BattSocPercent"].get_value(self.scales),
-            "battery_w": vars["DCBatteryPower"].get_value(self.scales),
+            "battery_w": battery_w,
+            "battery_voltage": battery_voltage,
+            "battery_temperature": vars["BatteryTemperature"].get_value(self.scales),
+            "battery_current": battery_current,  # derived: battery_w / battery_voltage
             #"fault_code": 0,
             #"fault_ts": 0,
             #"gen_status": 0,

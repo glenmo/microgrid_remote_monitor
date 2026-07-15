@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engineer View — Wombat Hollow Microgrid</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+    --bg-primary: #0f172a;
+    --bg-card: #1e293b;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent-green: #22c55e;
+    --accent-yellow: #eab308;
+    --accent-orange: #f97316;
+    --accent-red: #ef4444;
+    --accent-blue: #3b82f6;
+    --border: #334155;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; padding: 16px;
+}
+header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; padding: 0 6px; flex-wrap: wrap; gap: 8px;
+}
+header h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.3px; }
+header h1 .sp { color: var(--accent-blue); }
+header h1 .solis { color: var(--accent-orange); }
+.header-status { font-size: 12px; color: var(--text-secondary); display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.header-status a { color: var(--text-secondary); text-decoration: none; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; }
+.header-status a:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.pill { font-size: 11px; padding: 3px 9px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.pill.ok   { color: var(--accent-green);  border-color: rgba(34,197,94,0.4); }
+.pill.warn { color: var(--accent-yellow); border-color: rgba(234,179,8,0.4); }
+.pill.err  { color: var(--accent-red);    border-color: rgba(239,68,68,0.4); }
+
+main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+.inverter-column { display: flex; flex-direction: column; gap: 8px; }
+.col-label {
+    font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted);
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; background: rgba(255,255,255,0.02);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.col-label .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: var(--accent-blue); box-shadow: 0 0 6px var(--accent-blue); }
+.col-label.solis .dot { background: var(--accent-orange); box-shadow: 0 0 6px var(--accent-orange); }
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.card-title { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+.card-title .note { text-transform: none; letter-spacing: 0; font-size: 10px; color: var(--text-muted); }
+
+.batt-head { display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; }
+.soc-gauge { position: relative; width: 110px; height: 110px; }
+.soc-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+.soc-text .pct { font-size: 26px; font-weight: 700; }
+.soc-text .lbl { font-size: 9px; color: var(--text-muted); text-transform: uppercase; }
+
+/* dense key/value readout table */
+table.kv { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.kv th, table.kv td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
+table.kv tr:last-child th, table.kv tr:last-child td { border-bottom: none; }
+table.kv th { color: var(--text-secondary); font-weight: 400; }
+table.kv td { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+table.kv td small { color: var(--text-muted); font-weight: 400; margin-left: 2px; }
+
+/* multi-column data grid (PV strings, packs) */
+table.grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.grid th, table.grid td { padding: 5px 6px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+table.grid th { color: var(--text-muted); font-weight: 500; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+table.grid th:first-child, table.grid td:first-child { text-align: left; color: var(--text-secondary); }
+table.grid tr:last-child td { border-bottom: none; }
+.empty { color: var(--text-muted); font-size: 12px; padding: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>Engineer View · <span class="sp">SP PRO</span> + <span class="solis">SOLIS</span></h1>
+    <div class="header-status">
+        <a href="/">← Dashboard</a>
+        <a href="/flow">Flow</a>
+        <span class="pill err" id="sppro-fresh">SP Pro: —</span>
+        <span class="pill err" id="solis-fresh">Solis: —</span>
+    </div>
+</header>
+
+<main>
+    <!-- ================= SP PRO ================= -->
+    <section class="inverter-column">
+        <div class="col-label"><span><span class="dot"></span>Selectronic SP Pro</span><span id="sppro-mode">—</span></div>
+
+        <div class="card">
+            <div class="card-title">Battery</div>
+            <div class="batt-head">
+                <div class="soc-gauge"><canvas id="sppro-gauge"></canvas>
+                    <div class="soc-text"><div class="pct" id="sppro-soc">—%</div><div class="lbl">SoC</div></div>
+                </div>
+                <table class="kv">
+                    <tr><th>Voltage</th><td><span id="sppro-volt">—</span><small>V</small></td></tr>
+                    <tr><th>Current <small>(derived)</small></th><td><span id="sppro-curr">—</span><small>A</small></td></tr>
+                    <tr><th>Temperature</th><td><span id="sppro-temp">—</span><small>°C</small></td></tr>
+                    <tr><th>Power</th><td><span id="sppro-power">—</span><small>W</small></td></tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Solar <span class="note">AC-coupled — no per-string data</span></div>
+            <table class="kv">
+                <tr><th>AC-coupled inverters</th><td><span id="sppro-acsolar">—</span><small>W</small></td></tr>
+                <tr><th>DC solar shunt</th><td><span id="sppro-shunt">—</span><small>W</small></td></tr>
+                <tr><th>Solar today</th><td><span id="sppro-solar-today">—</span><small>kWh</small></td></tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Grid &amp; Load</div>
+            <table class="kv">
+                <tr><th>Grid power</th><td><span id="sppro-grid">—</span><small>W</small></td></tr>
+                <tr><th>Load power</th><td><span id="sppro-load">—</span><small>W</small></td></tr>
+            </table>
+        </div>
+    </section>
+
+    <!-- ================= SOLIS ================= -->
+    <section class="inverter-column">
+        <div class="col-label solis"><span><span class="dot"></span>Solis S6-EH3P 50 kW</span><span id="solis-mode">—</span></div>
+
+        <div class="card">
+            <div class="card-title">Battery <span class="note" id="solis-batt-type">—</span></div>
+            <div class="batt-head">
+                <div class="soc-gauge"><canvas id="solis-gauge"></canvas>
+                    <div class="soc-text"><div class="pct" id="solis-soc">—%</div><div class="lbl">SoC</div></div>
+                </div>
+                <table class="kv">
+                    <tr><th>State of Health</th><td><span id="solis-soh">—</span><small>%</small></td></tr>
+                    <tr><th>Voltage</th><td><span id="solis-volt">—</span><small>V</small></td></tr>
+                    <tr><th>Current</th><td><span id="solis-curr">—</span><small>A</small></td></tr>
+                    <tr><th>Temperature</th><td><span id="solis-temp">—</span><small>°C</small></td></tr>
+                    <tr><th>Power</th><td><span id="solis-power">—</span><small>W</small></td></tr>
+                    <tr><th>Charge / discharge limit</th><td><span id="solis-cclim">—</span> / <span id="solis-dclim">—</span><small>A</small></td></tr>
+                </table>
+            </div>
+            <table class="grid" id="solis-packs-table" style="margin-top:6px;">
+                <thead><tr><th>Pack</th><th>SoC %</th><th>SoH %</th><th>V</th><th>A</th><th>°C</th><th>W</th></tr></thead>
+                <tbody id="solis-packs"></tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="card-title">PV strings <span class="note" id="solis-pv-total">—</span></div>
+            <table class="grid">
+                <thead><tr><th>String</th><th>Voltage V</th><th>Current A</th><th>Power W</th></tr></thead>
+                <tbody id="solis-strings"></tbody>
+            </table>
+            <div class="empty" id="solis-strings-empty" style="display:none;">No PV strings reporting.</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Inverter &amp; AC</div>
+            <table class="kv">
+                <tr><th>Inverter temperature</th><td><span id="solis-inv-temp">—</span><small>°C</small></td></tr>
+                <tr><th>Grid frequency</th><td><span id="solis-freq">—</span><small>Hz</small></td></tr>
+                <tr><th>Phase A</th><td><span id="solis-vac-a">—</span><small>V</small> · <span id="solis-iac-a">—</span><small>A</small></td></tr>
+                <tr><th>Phase B</th><td><span id="solis-vac-b">—</span><small>V</small> · <span id="solis-iac-b">—</span><small>A</small></td></tr>
+                <tr><th>Phase C</th><td><span id="solis-vac-c">—</span><small>V</small> · <span id="solis-iac-c">—</span><small>A</small></td></tr>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script>
+function fmt(v, d=1) {
+    if (v === null || v === undefined || Number.isNaN(Number(v))) return '—';
+    return Number(v).toLocaleString('en-AU', {minimumFractionDigits: d, maximumFractionDigits: d});
+}
+function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+function gaugeColor(soc) {
+    if (soc < 20) return '#ef4444';
+    if (soc < 40) return '#f97316';
+    if (soc < 70) return '#eab308';
+    return '#22c55e';
+}
+function makeGauge(canvasId) {
+    return new Chart(document.getElementById(canvasId).getContext('2d'), {
+        type: 'doughnut',
+        data: { datasets: [{ data: [0, 100], backgroundColor: ['#22c55e','#334155'], borderWidth: 0, cutout: '78%', rotation: -90 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: {display:false}, tooltip: {enabled:false} } }
+    });
+}
+function updateGauge(g, soc) {
+    g.data.datasets[0].data = [soc, 100 - soc];
+    g.data.datasets[0].backgroundColor = [gaugeColor(soc), '#334155'];
+    g.update('none');
+}
+function noCacheFetch(url) {
+    const sep = url.includes('?') ? '&' : '?';
+    return fetch(url + sep + '_=' + Date.now(), { cache: 'no-store' });
+}
+function powerMode(w, thresh = 50) {
+    if (w > thresh) return 'Charging';
+    if (w < -thresh) return 'Discharging';
+    return 'Idle';
+}
+
+const sppGauge = makeGauge('sppro-gauge');
+const solGauge = makeGauge('solis-gauge');
+
+// last_read timestamps so the freshness pills can tick every second.
+let sppLastRead = null, sppConn = false;
+let solLastRead = null, solConn = false;
+
+// warnS/badS are the amber/red age thresholds in seconds, tuned per source cadence.
+function renderFresh(id, label, lr, conn, warnS, badS) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!conn || !lr) { el.className = 'pill err'; el.textContent = `${label}: offline`; return; }
+    const age = Math.max(0, Math.floor((Date.now() - new Date(lr).getTime()) / 1000));
+    const cls = age > badS ? 'err' : (age > warnS ? 'warn' : 'ok');
+    const shown = age < 90 ? `${age}s` : `${Math.floor(age/60)}m`;
+    el.className = 'pill ' + cls;
+    el.textContent = `${label}: ${shown} ago`;
+}
+function tickFresh() {
+    renderFresh('sppro-fresh', 'SP Pro', sppLastRead, sppConn, 30, 60);   // ~10s cadence
+    renderFresh('solis-fresh', 'Solis',  solLastRead, solConn, 420, 900); // ~5min cadence
+}
+
+function renderSPPro(d, status) {
+    sppConn = !!status?.connected; sppLastRead = status?.last_read || null;
+    if (!d || d.error) { setText('sppro-mode', 'Not available'); return; }
+    const soc = Number(d.battery_soc ?? 0);
+    updateGauge(sppGauge, soc); setText('sppro-soc', `${fmt(soc, 0)}%`);
+    const battW = Number(d.battery_w ?? 0);
+    setText('sppro-mode', powerMode(battW));
+    setText('sppro-volt',  fmt(d.battery_voltage, 1));
+    setText('sppro-curr',  fmt(d.battery_current, 1));
+    setText('sppro-temp',  fmt(d.battery_temperature, 1));
+    setText('sppro-power', fmt(battW, 0));
+    setText('sppro-acsolar', fmt(d.solarinverter_w, 0));
+    setText('sppro-shunt',   fmt(d.shunt_w, 0));
+    setText('sppro-solar-today', fmt(d.solar_wh_today, 1));
+    setText('sppro-grid', fmt(d.grid_w, 0));
+    setText('sppro-load', fmt(d.load_w, 0));
+}
+
+function renderSolis(d, status) {
+    solConn = !!status?.connected; solLastRead = status?.last_read || null;
+    if (!d || d.error) { setText('solis-mode', 'Not available'); return; }
+    const soc = Number(d.battery_soc ?? 0);
+    updateGauge(solGauge, soc); setText('solis-soc', `${fmt(soc, 0)}%`);
+    const battW = Number(d.battery_power ?? 0);
+    setText('solis-mode', powerMode(battW));
+    setText('solis-batt-type', d.battery_type ? `${d.battery_type} · ${fmt(d.battery_count,0)} packs` : '—');
+    setText('solis-soh',   fmt(d.battery_soh, 0));
+    setText('solis-volt',  fmt(d.battery_voltage, 1));
+    setText('solis-curr',  fmt(d.battery_current, 1));
+    setText('solis-temp',  fmt(d.battery_temperature, 1));
+    setText('solis-power', fmt(battW, 0));
+    setText('solis-cclim', fmt(d.battery_charge_current_limit, 0));
+    setText('solis-dclim', fmt(d.battery_discharge_current_limit, 0));
+    setText('solis-inv-temp', fmt(d.inverter_temperature, 1));
+    setText('solis-freq', fmt(d.grid_frequency, 2));
+    setText('solis-vac-a', fmt(d.ac_voltage_a, 1)); setText('solis-iac-a', fmt(d.ac_current_a, 1));
+    setText('solis-vac-b', fmt(d.ac_voltage_b, 1)); setText('solis-iac-b', fmt(d.ac_current_b, 1));
+    setText('solis-vac-c', fmt(d.ac_voltage_c, 1)); setText('solis-iac-c', fmt(d.ac_current_c, 1));
+    setText('solis-pv-total', `${fmt(d.pv_total_power, 0)} W total`);
+
+    // Per-pack battery table
+    const packs = Array.isArray(d.battery_packs) ? d.battery_packs : [];
+    const ptbl = document.getElementById('solis-packs-table');
+    const pbody = document.getElementById('solis-packs');
+    if (packs.length) {
+        ptbl.style.display = '';
+        pbody.innerHTML = packs.map(p => `<tr>
+            <td>#${p.i}</td><td>${fmt(p.soc,0)}</td><td>${fmt(p.soh,0)}</td>
+            <td>${fmt(p.voltage,1)}</td><td>${fmt(p.current,1)}</td>
+            <td>${fmt(p.temperature,1)}</td><td>${fmt(p.power,0)}</td></tr>`).join('');
+    } else { ptbl.style.display = 'none'; }
+
+    // Per-string PV table
+    const strings = Array.isArray(d.pv_strings) ? d.pv_strings : [];
+    const sbody = document.getElementById('solis-strings');
+    const sempty = document.getElementById('solis-strings-empty');
+    if (strings.length) {
+        sempty.style.display = 'none';
+        sbody.innerHTML = strings.map(s => `<tr>
+            <td>PV${s.i}</td><td>${fmt(s.voltage,1)}</td>
+            <td>${fmt(s.current,2)}</td><td>${fmt(s.power,0)}</td></tr>`).join('');
+    } else { sbody.innerHTML = ''; sempty.style.display = ''; }
+}
+
+async function fetchAll() {
+    try {
+        const [spp, sppStatus, sol, solStatus] = await Promise.all([
+            noCacheFetch('/api/sppro/data').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/sppro/status').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/solis/data').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/solis/status').then(r=>r.json()).catch(()=>({})),
+        ]);
+        renderSPPro(spp, sppStatus);
+        renderSolis(sol, solStatus);
+        tickFresh();
+    } catch (e) { console.warn(e); }
+}
+
+fetchAll();
+setInterval(fetchAll, 5000);
+setInterval(tickFresh, 1000);
+</script>
+</body>
+</html>

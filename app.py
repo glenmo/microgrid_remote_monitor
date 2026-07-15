@@ -594,6 +594,12 @@ def flow_diagram():
     return render_template("flow_diagram.html")
 
 
+@app.route("/engineer")
+def engineer_view():
+    """Serve the engineer-focused detail page (battery V/I/temp/SOC/SOH, per-string PV)."""
+    return render_template("engineer.html")
+
+
 @app.route("/api/data")
 def api_data():
     """Return current inverter data as JSON."""

@@ -154,7 +154,61 @@ class SolisCloudReader:
             "_battery_direction": direction,
             "_source": "soliscloud",
         }
+        out.update(self._map_engineer(d))
         return out
+
+    def _map_engineer(self, d):
+        """Extra engineer-detail fields (per-string PV, battery health, per-pack
+        detail, AC per-phase, inverter/BMS). Additive — separated so the core
+        ``_map`` contract stays obvious. Every field is guarded so a missing raw
+        key yields 0/empty rather than raising."""
+        # Per-string PV: uPv{n} (V), iPv{n} (A), pow{n} (W). Up to 32 strings on
+        # this firmware; only surface strings that carry any V/I/P.
+        pv_strings = []
+        for n in range(1, 33):
+            v = round(self._num(d, f"uPv{n}"), 1)
+            i = round(self._num(d, f"iPv{n}"), 2)
+            p = self._watts(d, f"pow{n}")
+            if v or i or p:
+                pv_strings.append({"i": n, "voltage": v, "current": i, "power": p})
+
+        # Per-pack battery detail from batteryList[] (batteryNum packs). Battery
+        # temperature (bmsTemp) lives ONLY here — top-level batteryLaTemp is 0.
+        packs = []
+        for idx, b in enumerate(d.get("batteryList") or [], start=1):
+            packs.append({
+                "i":           idx,
+                "soc":         round(self._num(b, "batteryCapacitySoc"), 1),
+                "soh":         round(self._num(b, "batteryHealthSoh"), 1),
+                "voltage":     round(self._num(b, "batteryVoltage"), 1),
+                "current":     round(self._num(b, "bstteryCurrent"), 1),
+                "temperature": round(self._num(b, "bmsTemp"), 1),
+                # batteryList power is already in watts (top-level is kW)
+                "power":       round(self._num(b, "batteryPower"), 0),
+            })
+
+        # Headline battery temperature: mean of the packs that report a temp.
+        pack_temps = [p["temperature"] for p in packs if p["temperature"]]
+        battery_temperature = round(sum(pack_temps) / len(pack_temps), 1) if pack_temps else 0.0
+
+        eng = {
+            "battery_soh":          round(self._num(d, "batteryHealthSoh"), 1),
+            "battery_temperature":  battery_temperature,
+            "battery_type":         d.get("batteryType"),
+            "battery_count":        int(self._num(d, "batteryNum")),
+            "battery_power_bms":    self._watts(d, "batteryPowerBms"),
+            "battery_charge_current_limit":    round(self._num(d, "batteryChargingCurrent"), 1),
+            "battery_discharge_current_limit": round(self._num(d, "batteryDischargeLimiting"), 1),
+            "inverter_temperature": round(self._num(d, "inverterTemperature"), 1),
+            "bms_status":           int(self._num(d, "bmsState")),
+            "battery_packs":        packs,
+            "pv_strings":           pv_strings,
+        }
+        # AC per-phase: uAc{1,2,3} (V) / iAc{1,2,3} (A).
+        for ph, n in (("a", 1), ("b", 2), ("c", 3)):
+            eng[f"ac_voltage_{ph}"] = round(self._num(d, f"uAc{n}"), 1)
+            eng[f"ac_current_{ph}"] = round(self._num(d, f"iAc{n}"), 2)
+        return eng
 
     # ---- polling ---------------------------------------------------------
     def poll_once(self):

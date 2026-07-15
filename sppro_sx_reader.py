@@ -226,8 +226,12 @@ class SPProSxReader:
             # Solis convention (and our dashboard's): POSITIVE = charging.
             # Flip the sign so the dashboard's setBadge / mode logic
             # (positive -> Charging) renders correctly for both inverters.
-            if "battery_w" in new_data and new_data["battery_w"] is not None:
-                new_data["battery_w"] = -new_data["battery_w"]
+            # battery_current is derived from the pre-flip power in
+            # get_select_emulated(), so flip it here too to keep the same
+            # convention (positive -> charging).
+            for _k in ("battery_w", "battery_current"):
+                if new_data.get(_k) is not None:
+                    new_data[_k] = -new_data[_k]
 
             new_data["_timestamp"] = datetime.now().isoformat()
             new_data["_device_name"] = raw.get("name", "SP Pro")
