@@ -435,6 +435,12 @@ class SolisModbusReader:
                 batt2_power = -batt2_power
             new_data["battery2_power"] = round(batt2_power, 1)
 
+        # Inverter AC output (reg 33079, + = exporting to the microgrid bus),
+        # measured. Exposed under its own name because SolisCloud's
+        # active_power is a different quantity (the psum meter).
+        if "active_power" in new_data:
+            new_data["inverter_ac_power"] = new_data["active_power"]
+
         # PV per-tracker power (V × I, watts) — for the per-tracker generation chart
         for n in (1, 2, 3, 4):
             v = new_data.get(f"pv{n}_voltage", 0) or 0

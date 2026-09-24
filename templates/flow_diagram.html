@@ -347,16 +347,24 @@ async function tick() {
   const sbatSocs = solisOn
     ? [num(solis.battery_soc), num(solis.bms2_battery_soc) ?? num(solis.battery_soc)]
     : null;
-  // Solis convention: battery_power > 0 = charging (matches dashboard)
-  updateBattery('sbat', sbatSocs, solisOn?solis.battery_power:null, true);
+  // Solis convention: battery_power > 0 = charging (matches dashboard).
+  // Total across both packs: local Modbus reports pack 2 separately as
+  // battery2_power; SolisCloud reports one combined batteryPower and no
+  // battery2_power.
+  const sbatW = solisOn ? (num(solis.battery_power) || 0) + (num(solis.battery2_power) || 0) : null;
+  updateBattery('sbat', sbatSocs, sbatW, true);
   // battery flow path drawn Solis -> battery (forward = charging); colour
   // green when charging, orange when discharging, to match the legend.
-  setFlow('f-sbat', 'l-sbat', solisOn?solis.battery_power:null,
-          { invert:false, color: (num(solis.battery_power) > 0 ? POS : NEG) });
-  // Solis power delivered to the bus = PV minus what its own battery absorbs
-  // (battery_power > 0 = charging). Derived from sources, so it can never show
-  // an export with no PV/battery behind it — SolisCloud's psum can lag/glitch.
-  const solisToBus = solisOn ? (num(solis.pv_total_power) - num(solis.battery_power)) : null;
+  setFlow('f-sbat', 'l-sbat', sbatW,
+          { invert:false, color: (sbatW > 0 ? POS : NEG) });
+  // Solis power delivered to the bus: the inverter's measured AC output when
+  // available (local Modbus reg 33079 — reads 0 with the AC side isolated).
+  // Otherwise (SolisCloud, whose psum can lag/glitch) derive it as PV minus
+  // what its own batteries absorb, so it can't show an export with no
+  // PV/battery behind it.
+  const solisToBus = !solisOn ? null
+      : (num(solis.inverter_ac_power) !== null ? num(solis.inverter_ac_power)
+                                               : (num(solis.pv_total_power) || 0) - sbatW);
   setFlow('f-solis', 'l-solis', solisToBus, { invert:false, color:GRID });
 
   // ---- SP PRO battery + generator + SP PRO -> microgrid ----
