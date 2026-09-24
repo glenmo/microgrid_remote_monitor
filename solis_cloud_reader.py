@@ -56,8 +56,9 @@ class SolisCloudReader:
         self.total_reads = 0
 
         self.data = {}
-        self.history_max = 1440  # 24h at 1-min cadence
+        self.history_max = 1440  # 5 days at the cloud's ~5-min cadence
         self.history = {
+            "t":               deque(maxlen=self.history_max),  # epoch ms
             "timestamps":      deque(maxlen=self.history_max),
             "battery_soc":     deque(maxlen=self.history_max),
             "pv_total_power":  deque(maxlen=self.history_max),
@@ -69,7 +70,8 @@ class SolisCloudReader:
             "pv3_power":       deque(maxlen=self.history_max),
             "pv4_power":       deque(maxlen=self.history_max),
         }
-        self._last_history_minute = -1
+        self._last_sample_ms = None  # dataTimestamp of the last history point
+        self.data_time = None        # when the inverter took the latest sample
 
         self.lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -230,17 +232,31 @@ class SolisCloudReader:
             return
 
         now = datetime.now()
+        # The cloud serves the logger's last upload (~5 min cadence), so stamp
+        # readings with the inverter's own sample time, not our fetch time.
+        try:
+            sample_ms = int(j["data"].get("dataTimestamp"))
+        except (TypeError, ValueError):
+            sample_ms = int(now.timestamp() * 1000)
+        sample_time = datetime.fromtimestamp(sample_ms / 1000)
+
         mapped = self._map(j["data"])
-        mapped["_timestamp"] = now.isoformat()
+        mapped["_timestamp"] = sample_time.isoformat()
+        mapped["_data_ts"] = sample_ms
+        mapped["_fetched_at"] = now.isoformat()
 
         self.connected = True
         self.total_reads += 1
         with self.lock:
             self.data = mapped
             self.last_read_time = now
-            if now.minute != self._last_history_minute:
-                self._last_history_minute = now.minute
-                self.history["timestamps"].append(now.strftime("%H:%M"))
+            self.data_time = sample_time
+            # One history point per distinct cloud sample — re-fetching the
+            # same upload must not add duplicate points.
+            if sample_ms != self._last_sample_ms:
+                self._last_sample_ms = sample_ms
+                self.history["t"].append(sample_ms)
+                self.history["timestamps"].append(sample_time.strftime("%H:%M"))
                 for key in ("battery_soc", "pv_total_power", "battery_power",
                             "active_power", "grid_frequency",
                             "pv1_power", "pv2_power", "pv3_power", "pv4_power"):
@@ -292,6 +308,7 @@ class SolisCloudReader:
             "total_reads": self.total_reads,
             "read_errors": self.read_errors,
             "last_read": self.last_read_time.isoformat() if self.last_read_time else None,
+            "data_time": self.data_time.isoformat() if self.data_time else None,
         }
 
 

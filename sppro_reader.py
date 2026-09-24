@@ -90,6 +90,7 @@ class SPProModbusReader:
         # History for charts — 7 days at 1-minute intervals
         self.history_max = 10080
         self.history = {
+            "t": deque(maxlen=self.history_max),  # epoch ms
             "timestamps":          deque(maxlen=self.history_max),
             "battery_soc":         deque(maxlen=self.history_max),
             "battery_voltage":     deque(maxlen=self.history_max),
@@ -276,6 +277,7 @@ class SPProModbusReader:
             current_minute = now.minute
             if current_minute != self._last_history_minute:
                 self._last_history_minute = current_minute
+                self.history["t"].append(int(now.timestamp() * 1000))
                 self.history["timestamps"].append(now.strftime("%H:%M"))
                 for key in ["battery_soc", "battery_voltage", "total_load_power",
                             "total_source_power", "total_pv_power", "total_battery_current"]:

@@ -208,6 +208,7 @@ class SolisModbusReader:
         # but we'll 7 days at 1-minute intervals = 10080 points
         self.history_max = 10080
         self.history = {
+            "t": deque(maxlen=self.history_max),  # epoch ms
             "timestamps": deque(maxlen=self.history_max),
             "battery_soc": deque(maxlen=self.history_max),
             "pv_total_power": deque(maxlen=self.history_max),
@@ -471,6 +472,7 @@ class SolisModbusReader:
             current_minute = now.minute
             if current_minute != self._last_history_minute:
                 self._last_history_minute = current_minute
+                self.history["t"].append(int(now.timestamp() * 1000))
                 self.history["timestamps"].append(now.strftime("%H:%M"))
                 for key in ["battery_soc", "pv_total_power", "active_power",
                             "battery_power", "battery_voltage", "grid_frequency", "pv1_power", "pv2_power", "pv3_power", "pv4_power"]:

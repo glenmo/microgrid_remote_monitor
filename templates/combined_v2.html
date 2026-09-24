@@ -371,12 +371,55 @@ const solidLegend = {
     }
 };
 
+// History charts plot {x: epoch ms, y} points on a linear time axis, so each
+// series sits at its real sample time — SP Pro (1/min) and SolisCloud (~5 min)
+// line up by time rather than by array index.
+const HOUR_MS = 3600 * 1000, DAY_MS = 24 * HOUR_MS;
+const GAP_MS = 12 * 60 * 1000;  // break the line across gaps longer than this
+const hhmm = ms => new Date(ms).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false});
+function timeAxis() {
+    return {
+        type: 'linear', grid: {color: '#1e293b'},
+        ticks: { maxTicksLimit: 12, callback: v => hhmm(v) },
+        // Place ticks on local whole-hour boundaries rather than at the axis min.
+        afterBuildTicks: axis => {
+            const step = axis.options.ticks.stepSize;
+            if (!step) return;
+            const off = new Date().getTimezoneOffset() * 60000;
+            const ticks = [];
+            for (let t = Math.ceil((axis.min - off) / step) * step + off; t <= axis.max; t += step)
+                ticks.push({ value: t });
+            axis.ticks = ticks;
+        },
+    };
+}
+const timeTooltip = {
+    callbacks: { title: items => items.length ? new Date(items[0].parsed.x).toLocaleString([], {
+        weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : '' }
+};
+// Pin the axis to [min, max] with ticks on whole hours (1–12 h apart).
+function setRange(chart, min, max = Date.now()) {
+    const x = chart.options.scales.x;
+    x.min = min; x.max = max;
+    x.ticks.stepSize = [1, 2, 3, 6, 12].find(h => (max - min) / (h * HOUR_MS) <= 10) * HOUR_MS || 24 * HOUR_MS;
+}
+// Zip a history response into points; `scale` converts units, `since` trims.
+function points(h, key, scale = 1, since = 0) {
+    const t = h?.t || [], v = h?.[key] || [];
+    const out = [];
+    for (let i = 0; i < t.length; i++) {
+        if (t[i] == null || t[i] < since) continue;
+        out.push({ x: t[i], y: (v[i] ?? 0) * scale });
+    }
+    return out;
+}
+
 const freqChart = new Chart(document.getElementById('freqChart').getContext('2d'), {
     type: 'line',
-    data: { labels: [], datasets: [
+    data: { datasets: [
         { label: 'Microgrid Hz', data: [], borderColor: '#22c55e',
           backgroundColor:'rgba(34,197,94,0.06)', borderWidth: 2,
-          pointRadius: 0, tension: 0.2, fill: true },
+          pointRadius: 0, spanGaps: GAP_MS, tension: 0.2, fill: true },
     ]},
     options: {
         responsive: true, maintainAspectRatio: false, animation: false,
@@ -384,41 +427,41 @@ const freqChart = new Chart(document.getElementById('freqChart').getContext('2d'
             y: { min: 49.5, max: 55, ticks: { stepSize: 0.5 },
                  grid: {color: '#1e293b'},
                  title: { display: true, text: 'Hz', color: '#e8edf2' } },
-            x: { grid: {color: '#1e293b'} }
+            x: timeAxis()
         },
-        plugins: { legend: solidLegend }
+        plugins: { legend: solidLegend, tooltip: timeTooltip }
     }
 });
 
 const socChart = new Chart(document.getElementById('socChart').getContext('2d'), {
     type: 'line',
-    data: { labels: [], datasets: [
-        { label: 'SP Pro SoC %', data: [], borderColor: '#3b82f6', backgroundColor:'rgba(59,130,246,0.08)', borderWidth: 2, pointRadius: 0, tension: 0.2, fill: true },
-        { label: 'Solis SoC %',  data: [], borderColor: '#f97316', backgroundColor:'rgba(249,115,22,0.08)', borderWidth: 2, pointRadius: 0, tension: 0.2, fill: true },
+    data: { datasets: [
+        { label: 'SP Pro SoC %', data: [], borderColor: '#3b82f6', backgroundColor:'rgba(59,130,246,0.08)', borderWidth: 2, pointRadius: 0, spanGaps: GAP_MS, tension: 0.2, fill: true },
+        { label: 'Solis SoC %',  data: [], borderColor: '#f97316', backgroundColor:'rgba(249,115,22,0.08)', borderWidth: 2, pointRadius: 0, spanGaps: GAP_MS, tension: 0.2, fill: true },
     ]},
     options: {
         responsive: true, maintainAspectRatio: false, animation: false,
-        scales: { y: { min: 0, max: 100, grid: {color: '#1e293b'} }, x: { grid: {color: '#1e293b'} } },
-        plugins: { legend: solidLegend }
+        scales: { y: { min: 0, max: 100, grid: {color: '#1e293b'} }, x: timeAxis() },
+        plugins: { legend: solidLegend, tooltip: timeTooltip }
     }
 });
 
 const pvChart = document.getElementById('pvChart') && new Chart(document.getElementById('pvChart').getContext('2d'), {
     type: 'line',
-    data: { labels: [], datasets: [
-        { label: 'PV1', data: [], borderColor: '#eab308', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false },
-        { label: 'PV2', data: [], borderColor: '#22c55e', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false },
-        { label: 'PV3', data: [], borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false },
-        { label: 'PV4', data: [], borderColor: '#ec4899', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false },
+    data: { datasets: [
+        { label: 'PV1', data: [], borderColor: '#eab308', borderWidth: 2, pointRadius: 0, spanGaps: GAP_MS, tension: 0.3, fill: false },
+        { label: 'PV2', data: [], borderColor: '#22c55e', borderWidth: 2, pointRadius: 0, spanGaps: GAP_MS, tension: 0.3, fill: false },
+        { label: 'PV3', data: [], borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, spanGaps: GAP_MS, tension: 0.3, fill: false },
+        { label: 'PV4', data: [], borderColor: '#ec4899', borderWidth: 2, pointRadius: 0, spanGaps: GAP_MS, tension: 0.3, fill: false },
     ]},
     options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         scales: {
             y: { min: 0, grid: {color: '#1e293b'},
                  title: { display: true, text: 'kW', color: '#e8edf2' } },
-            x: { grid: {color: '#1e293b'} }
+            x: timeAxis()
         },
-        plugins: { legend: solidLegend }
+        plugins: { legend: solidLegend, tooltip: timeTooltip }
     }
 });
 
@@ -638,35 +681,25 @@ async function fetchHistory() {
             noCacheFetch('/api/sppro/history').then(r=>r.json()).catch(()=>({})),
             noCacheFetch('/api/solis/history').then(r=>r.json()).catch(()=>({})),
         ]);
-        // SoC chart â full 7-day history
-        const socLabels = (sppH.timestamps?.length || 0) >= (solH.timestamps?.length || 0)
-            ? (sppH.timestamps || []) : (solH.timestamps || []);
-        socChart.data.labels = socLabels;
-        socChart.data.datasets[0].data = sppH.battery_soc || [];
-        socChart.data.datasets[1].data = solH.battery_soc || [];
+        // SoC chart — full retained history of both systems, on one time axis
+        socChart.data.datasets[0].data = points(sppH, 'battery_soc');
+        socChart.data.datasets[1].data = points(solH, 'battery_soc');
+        const firstT = Math.min(sppH.t?.[0] ?? Infinity, solH.t?.[0] ?? Infinity);
+        setRange(socChart, isFinite(firstT) ? firstT : Date.now() - DAY_MS);
         socChart.update('none');
 
-        // Frequency chart â last 24 hours only (1440 entries)
-        const freqAll = solH.grid_frequency || [];
-        const freqLabelsAll = solH.timestamps || [];
-        const freqLen = Math.min(freqAll.length, 1440);
-        freqChart.data.labels = freqLabelsAll.slice(-freqLen);
-        freqChart.data.datasets[0].data = freqAll.slice(-freqLen);
+        // Frequency + PV charts — last 24 hours
+        const since = Date.now() - DAY_MS;
+        freqChart.data.datasets[0].data = points(solH, 'grid_frequency', 1, since);
+        setRange(freqChart, since);
         freqChart.update('none');
 
-        // PV chart — today only (last 1440 entries = 24h), per-tracker in kW
-        const pv1All = (solH.pv1_power || []).map(w => (w || 0) / 1000);
-        const pv2All = (solH.pv2_power || []).map(w => (w || 0) / 1000);
-        const pv3All = (solH.pv3_power || []).map(w => (w || 0) / 1000);
-        const pv4All = (solH.pv4_power || []).map(w => (w || 0) / 1000);
-        const pvLabelsAll = solH.timestamps || [];
-        const pvLen = Math.min(pv1All.length, 1440);
+        // PV chart — per-tracker in kW
         if (pvChart) {
-            pvChart.data.labels = pvLabelsAll.slice(-pvLen);
-            pvChart.data.datasets[0].data = pv1All.slice(-pvLen);
-            pvChart.data.datasets[1].data = pv2All.slice(-pvLen);
-            pvChart.data.datasets[2].data = pv3All.slice(-pvLen);
-            pvChart.data.datasets[3].data = pv4All.slice(-pvLen);
+            ['pv1_power', 'pv2_power', 'pv3_power', 'pv4_power'].forEach((k, i) => {
+                pvChart.data.datasets[i].data = points(solH, k, 1 / 1000, since);
+            });
+            setRange(pvChart, since);
             pvChart.update('none');
         }
     } catch (e) { console.warn(e); }

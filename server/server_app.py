@@ -86,14 +86,19 @@ def api_push():
     if not payload:
         abort(400, description="Expected JSON body")
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_dt = datetime.now()
+    now = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+    now_ms = int(now_dt.timestamp() * 1000)
 
     with data_lock:
         if "solis" in payload:
             latest_solis = payload["solis"]
             latest_solis["_received_at"] = now
-            # Add to history
+            # SolisCloud data carries the inverter's own sample time
+            # (_data_ts); use it, and skip re-pushes of the same sample.
+            sample_ms = latest_solis.get("_data_ts") or now_ms
             hist_entry = {
+                "t": sample_ms,
                 "timestamp": now,
                 "soc": latest_solis.get("battery_soc", 0),
                 "pv_power": latest_solis.get("pv_total_power", 0),
@@ -105,7 +110,8 @@ def api_push():
                 "pv3_power": latest_solis.get("pv3_power", 0),
                 "pv4_power": latest_solis.get("pv4_power", 0),
             }
-            solis_history.append(hist_entry)
+            if not solis_history or solis_history[-1].get("t") != sample_ms:
+                solis_history.append(hist_entry)
 
         if "eastron" in payload:
             latest_eastron = payload["eastron"]
@@ -126,6 +132,7 @@ def api_push():
             latest_sppro["_received_at"] = now
             # Add to history
             hist_entry = {
+                "t": now_ms,
                 "timestamp": now,
                 "soc": latest_sppro.get("battery_soc", 0),
                 "pv_power": latest_sppro.get("pv_power", 0),
@@ -184,6 +191,7 @@ def api_solis_history():
         entries = list(solis_history)
     # Convert row format (list of dicts) → column format (dict of arrays)
     return jsonify({
+        "t":              [e.get("t")               for e in entries],
         "timestamps":     [e.get("timestamp")       for e in entries],
         "battery_soc":    [e.get("soc",          0) for e in entries],
         "pv_total_power": [e.get("pv_power",     0) for e in entries],
@@ -214,6 +222,7 @@ def api_sppro_history():
     with data_lock:
         entries = list(sppro_history)
     return jsonify({
+        "t":              [e.get("t")               for e in entries],
         "timestamps":     [e.get("timestamp")       for e in entries],
         "battery_soc":    [e.get("soc",          0) for e in entries],
         "pv_power":       [e.get("pv_power",     0) for e in entries],

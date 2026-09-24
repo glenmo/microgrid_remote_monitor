@@ -159,6 +159,7 @@ class SPProSxReader:
         self.data = {}
         self.history_max = 1440
         self.history = {
+            "t": deque(maxlen=self.history_max),  # epoch ms
             "timestamps":      deque(maxlen=self.history_max),
             "battery_soc":     deque(maxlen=self.history_max),
             "battery_w":       deque(maxlen=self.history_max),
@@ -246,6 +247,7 @@ class SPProSxReader:
                 now = datetime.now()
                 if now.minute != self._last_history_minute:
                     self._last_history_minute = now.minute
+                    self.history["t"].append(int(now.timestamp() * 1000))
                     self.history["timestamps"].append(now.strftime("%H:%M"))
                     for key in ("battery_soc", "battery_w", "grid_w",
                                 "load_w", "shunt_w", "solarinverter_w"):
