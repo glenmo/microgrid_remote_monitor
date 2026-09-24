@@ -25,7 +25,7 @@ import logging
 import threading
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.utils import formatdate
 
 import requests
@@ -33,6 +33,11 @@ import requests
 log = logging.getLogger("solis_cloud_reader")
 
 INVERTER_DETAIL = "/v1/api/inverterDetail"
+INVERTER_DAY = "/v1/api/inverterDay"
+
+HISTORY_KEYS = ("battery_soc", "pv_total_power", "battery_power",
+                "active_power", "grid_frequency",
+                "pv1_power", "pv2_power", "pv3_power", "pv4_power")
 
 # Map a SolisCloud unit string to a multiplier that normalises to watts.
 _UNIT_W = {"W": 1.0, "kW": 1000.0, "MW": 1_000_000.0, "VA": 1.0, "kVA": 1000.0}
@@ -257,15 +262,89 @@ class SolisCloudReader:
                 self._last_sample_ms = sample_ms
                 self.history["t"].append(sample_ms)
                 self.history["timestamps"].append(sample_time.strftime("%H:%M"))
-                for key in ("battery_soc", "pv_total_power", "battery_power",
-                            "active_power", "grid_frequency",
-                            "pv1_power", "pv2_power", "pv3_power", "pv4_power"):
+                for key in HISTORY_KEYS:
                     self.history[key].append(mapped.get(key, 0))
+
+    # ---- restart backfill ---------------------------------------------------
+    def _map_day(self, x):
+        """Map one inverterDay record to our history keys.
+
+        Day records use different fields/units from inverterDetail (verified
+        against the same sample): pSum is plain W (detail's psum is kW), per-
+        string PV power is uPvN*iPvN (no powN), fac matches. batteryPower is
+        present but couldn't be verified (only seen at 0), so it's left None
+        rather than guessed. batteryCapacitySoc can differ by ~1% from
+        inverterDetail's value for the same sample.
+        """
+        pv = {f"pv{n}_power": round(self._num(x, f"uPv{n}") * self._num(x, f"iPv{n}"), 1)
+              for n in range(1, 5)}
+        return {
+            "battery_soc": self._num(x, "batteryCapacitySoc"),
+            "pv_total_power": round(sum(pv.values()), 1),
+            "battery_power": None,
+            "active_power": self._num(x, "pSum"),
+            "grid_frequency": self._num(x, "fac"),
+            **pv,
+        }
+
+    def backfill(self):
+        """Reload yesterday's and today's samples from SolisCloud day history.
+
+        History is in-memory only, so a restart would otherwise leave the
+        charts empty. Recovers samples the cloud holds that we don't; it can't
+        fill gaps where the logger never uploaded.
+        """
+        now = datetime.now().astimezone()
+        tz_hours = now.utcoffset().total_seconds() / 3600
+        if tz_hours.is_integer():
+            tz_hours = int(tz_hours)
+        records = []
+        for day in (now.date() - timedelta(days=1), now.date()):
+            body = {"sn": self.inverter_sn, "money": "AUD",
+                    "time": day.isoformat(), "timeZone": tz_hours}
+            if self.inverter_id:
+                body["id"] = self.inverter_id
+            try:
+                j = self._call(INVERTER_DAY, body)
+            except Exception as e:
+                log.warning(f"SolisCloud backfill {day}: request failed: {type(e).__name__}: {e}")
+                continue
+            if not j.get("success") or not isinstance(j.get("data"), list):
+                log.warning(f"SolisCloud backfill {day}: API error: code={j.get('code')} msg={j.get('msg')}")
+                continue
+            for x in j["data"]:
+                try:
+                    records.append((int(x["dataTimestamp"]), self._map_day(x)))
+                except (KeyError, TypeError, ValueError):
+                    continue
+
+        with self.lock:
+            # Merge with anything already recorded, keeping live points on a
+            # timestamp clash, then rebuild the deques in time order.
+            merged = {ms: mapped for ms, mapped in records}
+            for i, ms in enumerate(self.history["t"]):
+                merged[ms] = {k: self.history[k][i] for k in HISTORY_KEYS}
+            added = len(merged) - len(self.history["t"])
+            for k in self.history:
+                self.history[k].clear()
+            for ms in sorted(merged):
+                self.history["t"].append(ms)
+                self.history["timestamps"].append(
+                    datetime.fromtimestamp(ms / 1000).strftime("%H:%M"))
+                for k in HISTORY_KEYS:
+                    self.history[k].append(merged[ms][k])
+            if merged:
+                self._last_sample_ms = max(self._last_sample_ms or 0, max(merged))
+        log.info(f"SolisCloud backfill: added {added} samples from day history")
 
     def _poll_loop(self):
         log.info(f"SolisCloud poll loop started (every {self.poll_interval}s, "
                  f"inverter sn={self.inverter_sn})")
         last_heartbeat = datetime.now()
+        try:
+            self.backfill()
+        except Exception as e:
+            log.error(f"SolisCloud backfill error: {e}")
         while not self._stop_event.is_set():
             try:
                 self.poll_once()
