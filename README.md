@@ -124,13 +124,15 @@ sudo systemctl enable --now microgrid-pusher.service
 ## Quick start — VPS (pignus)
 
 ```
-git clone https://github.com/glenmo/microgrid_remote_monitor /opt/microgrid_remote_monitor
-cd /opt/microgrid_remote_monitor/server
-sudo bash install_server.sh
+git clone https://github.com/glenmo/microgrid_remote_monitor ~/microgrid_remote_monitor
+cd ~/microgrid_remote_monitor/server
+bash install_server.sh      # not with sudo — the unit runs as $USER; the script sudos where needed
 ```
 
-Edit `/etc/systemd/system/microgrid-server.service` to set
-`MONITOR_API_KEY` (must match the Pi), then start it. The Apache vhost in
+This installs `/etc/systemd/system/microgrid-monitor.service` (the same unit
+name as on the Pi), running `server/venv/bin/python server_app.py` from
+`~/microgrid_remote_monitor/server`. Check `MONITOR_API_KEY` in the unit
+matches the Pi's pusher, then start it. The Apache vhost in
 `server/monitor.mooramoora.org.au.conf` reverse-proxies `/` to the
 traffic-light app on `:8765`, `/advanced/` to the combined dashboard on
 `:8100`, and `/api/` to `:8100`.
@@ -252,9 +254,13 @@ the local production reader on rubberduck.
   `microgrid-pusher.service`.
 - **desky** — Linux box on the LAN, hostname `desky.local`. Runs
   `soc-traffic-light.service` on port 8765.
-- **pignus** — VPS hosting `monitor.mooramoora.org.au`, runs
-  `microgrid-monitor.service` (server_app on :8100) and
-  `soc-traffic-light.service` (:8765) behind Apache.
+- **pignus** — VPS `pignus.arachnoid.net.au` (110.173.134.67) hosting
+  `monitor.mooramoora.org.au`. Repo at `/home/glen/microgrid_remote_monitor`;
+  runs `microgrid-monitor.service` (server_app on :8100, from `server/`) and
+  `soc-traffic-light.service` (:8765, from `~/soc_traffic_light`) behind
+  Apache. SSH is guarded by fail2ban — repeated failed connections (e.g.
+  unknown host key under `BatchMode`) ban the client IP; clear with
+  `sudo fail2ban-client set sshd unbanip <ip>`.
 
 
 ## Local development
@@ -287,6 +293,15 @@ cd ~/microgrid_remote_monitor
 git stash && git pull && git stash pop
 sudo systemctl restart microgrid-monitor.service
 ```
+
+The VPS is deployed the same way — same repo path and unit name:
+
+```
+ssh pignus 'cd ~/microgrid_remote_monitor && git pull --ff-only && sudo systemctl restart microgrid-monitor.service'
+```
+
+Changes to shared templates or API shapes need both hosts updated together:
+pignus serves the same `combined_v2.html` from its own checkout.
 
 
 ## Operational notes / known issues

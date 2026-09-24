@@ -21,7 +21,15 @@ cd vendor/selpi && python -m unittest tests.test_crc            # single module
 ./venv/bin/python selpi_probe.py --password "..."
 ```
 
-Deployment happens by `git pull` + `systemctl restart` on the hosts (rubberduck, kitty, pignus). There's no CI. Verify with `curl` against the `/api/*` endpoints (see README "Useful commands").
+Deployment happens by `git pull --ff-only` + `sudo systemctl restart <unit>` over SSH (host aliases in `~/.ssh/config`). There's no CI. Verify with `curl` against the `/api/*` endpoints (see README "Useful commands").
+
+| Host | Repo | Unit |
+| --- | --- | --- |
+| `rubberduck` (site Pi) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`app.py`), `microgrid-pusher.service` |
+| `kitty` (SP Pro USB Pi) | `~/microgrid_remote_monitor` | `sppro-pusher.service` |
+| `pignus` (VPS, `pignus.arachnoid.net.au`) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`server/server_app.py`) |
+
+Template or API-shape changes must go to rubberduck and pignus together. pignus runs fail2ban, so batch remote commands into as few SSH connections as you can, and stop after a failed connection rather than retrying.
 
 ## Architecture
 
