@@ -51,6 +51,9 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .charts { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 860px) { .charts { grid-template-columns: 1fr; } }
 .chart-box { position: relative; height: 280px; }
+.status-card { grid-column: 1 / -1; }
+.status-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-items: start; }
+@media (max-width: 860px) { .status-cols { grid-template-columns: 1fr; } }
 .inverter-column { display: flex; flex-direction: column; gap: 8px; }
 .col-label {
     font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted);
@@ -198,26 +201,6 @@ table.grid tr:last-child td { border-bottom: none; }
         </div>
 
         <div class="card">
-            <div class="card-title">Status &amp; faults <span class="note">raw register values — local Modbus only</span></div>
-            <table class="kv">
-                <tr><th>Working mode</th><td id="solis-st-mode">—</td></tr>
-                <tr><th>Inverter status</th><td id="solis-st-inv">—</td></tr>
-                <tr><th>Operating status</th><td id="solis-st-op">—</td></tr>
-                <tr><th>BMS status <small>(pack 1 / 2)</small></th><td id="solis-st-bms">—</td></tr>
-                <tr><th>Fault code 01</th><td id="solis-fault-1">—</td></tr>
-                <tr><th>Fault code 02</th><td id="solis-fault-2">—</td></tr>
-                <tr><th>Fault code 03</th><td id="solis-fault-3">—</td></tr>
-                <tr><th>Fault code 04</th><td id="solis-fault-4">—</td></tr>
-                <tr><th>DC bus voltage</th><td><span id="solis-dcbus">—</span><small>V</small></td></tr>
-                <tr><th>Backup port <small>(phase A)</small></th><td><span id="solis-bk-v">—</span><small>V</small> · <span id="solis-bk-i">—</span><small>A</small></td></tr>
-                <tr><th>Battery MOSFET temp</th><td><span id="solis-mos-temp">—</span><small>°C</small></td></tr>
-                <tr><th>Active / reactive / apparent</th><td><span id="solis-p">—</span><small>W</small> · <span id="solis-q">—</span><small>var</small> · <span id="solis-sva">—</span><small>VA</small></td></tr>
-                <tr><th>Power factor</th><td id="solis-pf">—</td></tr>
-                <tr><th>Inverter clock</th><td id="solis-clock">—</td></tr>
-            </table>
-        </div>
-
-        <div class="card">
             <div class="card-title">Energy ledger <span class="note">kWh</span></div>
             <table class="grid">
                 <thead><tr><th></th><th>Today</th><th>Lifetime</th></tr></thead>
@@ -237,7 +220,39 @@ table.grid tr:last-child td { border-bottom: none; }
             <div class="card-title">Site power balance — last 24 h <span class="note">kW · batteries + = charging · generator + = supplying</span></div>
             <div class="chart-box"><canvas id="powerChart"></canvas></div>
         </div>
+        <div class="card">
+            <div class="card-title">SP Pro battery — current &amp; voltage, last 24 h <span class="note">current + = charging</span></div>
+            <div class="chart-box"><canvas id="sppIVChart"></canvas></div>
+        </div>
+        <div class="card">
+            <div class="card-title">Solis batteries — current &amp; voltage, last 24 h <span class="note">current + = charging</span></div>
+            <div class="chart-box"><canvas id="solIVChart"></canvas></div>
+        </div>
     </section>
+    <!-- ================= SOLIS STATUS (full width, bottom) ================= -->
+    <div class="card status-card">
+        <div class="card-title">Solis status &amp; faults <span class="note">raw register values — local Modbus only</span></div>
+        <div class="status-cols">
+            <table class="kv">
+                <tr><th>Working mode</th><td id="solis-st-mode">—</td></tr>
+                <tr><th>Inverter status</th><td id="solis-st-inv">—</td></tr>
+                <tr><th>Operating status</th><td id="solis-st-op">—</td></tr>
+                <tr><th>BMS status <small>(pack 1 / 2)</small></th><td id="solis-st-bms">—</td></tr>
+                <tr><th>Fault code 01</th><td id="solis-fault-1">—</td></tr>
+                <tr><th>Fault code 02</th><td id="solis-fault-2">—</td></tr>
+                <tr><th>Fault code 03</th><td id="solis-fault-3">—</td></tr>
+                <tr><th>Fault code 04</th><td id="solis-fault-4">—</td></tr>
+            </table>
+            <table class="kv">
+                <tr><th>DC bus voltage</th><td><span id="solis-dcbus">—</span><small>V</small></td></tr>
+                <tr><th>Backup port <small>(phase A)</small></th><td><span id="solis-bk-v">—</span><small>V</small> · <span id="solis-bk-i">—</span><small>A</small></td></tr>
+                <tr><th>Battery MOSFET temp</th><td><span id="solis-mos-temp">—</span><small>°C</small></td></tr>
+                <tr><th>Active / reactive / apparent</th><td><span id="solis-p">—</span><small>W</small> · <span id="solis-q">—</span><small>var</small> · <span id="solis-sva">—</span><small>VA</small></td></tr>
+                <tr><th>Power factor</th><td id="solis-pf">—</td></tr>
+                <tr><th>Inverter clock</th><td id="solis-clock">—</td></tr>
+            </table>
+        </div>
+    </div>
 </main>
 
 <script>
@@ -485,7 +500,7 @@ function line(label, color, dash) {
     return { label, data: [], borderColor: color, backgroundColor: color, borderWidth: 2,
              borderDash: dash || [], pointRadius: 0, tension: 0.2, spanGaps: GAP_MS };
 }
-function historyChart(id, yTitle, datasets) {
+function historyChart(id, yTitle, datasets, extraScales = {}) {
     return new Chart(document.getElementById(id).getContext('2d'), {
         type: 'line',
         data: { datasets },
@@ -496,6 +511,7 @@ function historyChart(id, yTitle, datasets) {
                 x: timeAxis(),
                 y: { grid: {color: '#1e293b'}, ticks: {color: '#94a3b8'},
                      title: { display: true, text: yTitle, color: '#94a3b8' } },
+                ...extraScales,
             },
             plugins: {
                 legend: { labels: { color: '#e8edf2', boxWidth: 12 } },
@@ -507,6 +523,17 @@ function historyChart(id, yTitle, datasets) {
         },
     });
 }
+// Current (A, left axis, solid) and voltage (V, right axis, dashed) together.
+function ivChart(id, datasets) {
+    const c = historyChart(id, 'A', datasets, {
+        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: {color: '#94a3b8'},
+              title: { display: true, text: 'V', color: '#94a3b8' } },
+    });
+    // zero line on the current axis so charge/discharge reads at a glance
+    c.options.scales.y.grid.color = ctx => ctx.tick.value === 0 ? '#64748b' : '#1e293b';
+    return c;
+}
+const onV = ds => Object.assign(ds, { yAxisID: 'y1', borderDash: [5, 4], borderWidth: 1.5 });
 const tempChart = historyChart('tempChart', '°C', [
     line('Solis inverter', '#f97316'),
     line('Solis battery MOSFET', '#eab308'),
@@ -520,6 +547,17 @@ const powerChart = historyChart('powerChart', 'kW', [
     line('SP Pro battery', '#3b82f6'),
     line('Generator', '#ef4444'),
     line('Load', '#e8edf2'),
+]);
+
+const sppIVChart = ivChart('sppIVChart', [
+    line('Current', '#3b82f6'),
+    onV(line('Voltage', '#93c5fd')),
+]);
+const solIVChart = ivChart('solIVChart', [
+    line('Pack 1 current', '#f97316'),
+    line('Pack 2 current', '#22c55e'),
+    onV(line('Pack 1 voltage', '#fdba74')),
+    onV(line('Pack 2 voltage', '#86efac')),
 ]);
 
 async function fetchHistory() {
@@ -554,6 +592,18 @@ async function fetchHistory() {
         powerChart.data.datasets[5].data = series(sppH, col(sppH, 'load_w', kW), since);
         setRange(powerChart, since);
         powerChart.update('none');
+
+        sppIVChart.data.datasets[0].data = series(sppH, col(sppH, 'battery_current'), since);
+        sppIVChart.data.datasets[1].data = series(sppH, col(sppH, 'battery_voltage'), since);
+        setRange(sppIVChart, since);
+        sppIVChart.update('none');
+
+        solIVChart.data.datasets[0].data = series(solH, col(solH, 'battery_current'), since);
+        solIVChart.data.datasets[1].data = series(solH, col(solH, 'battery2_current'), since);
+        solIVChart.data.datasets[2].data = series(solH, col(solH, 'battery_voltage'), since);
+        solIVChart.data.datasets[3].data = series(solH, col(solH, 'battery2_voltage'), since);
+        setRange(solIVChart, since);
+        solIVChart.update('none');
     } catch (e) { console.warn(e); }
 }
 

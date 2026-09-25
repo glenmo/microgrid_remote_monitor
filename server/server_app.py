@@ -78,6 +78,15 @@ def require_api_key(f):
 # ---------------------------------------------------------------------------
 # Push endpoint — Pi sends data here
 # ---------------------------------------------------------------------------
+def _signed_current(d, key, dir_key):
+    """Solis Modbus battery current is a magnitude plus a direction flag
+    (1 = discharging); return it signed, + = charging (None if absent)."""
+    i = d.get(key)
+    if i is None:
+        return None
+    return -abs(i) if d.get(dir_key) == 1 else abs(i)
+
+
 @app.route("/api/push", methods=["POST"])
 @require_api_key
 def api_push():
@@ -116,6 +125,10 @@ def api_push():
                 "inverter_temp": latest_solis.get("inverter_temp"),
                 "battery_mos_temp": latest_solis.get("battery_mos_temp"),
                 "bms2_battery_temp": latest_solis.get("bms2_battery_temp"),
+                "battery_voltage": latest_solis.get("battery_voltage"),
+                "battery_current": _signed_current(latest_solis, "battery_current", "battery_current_dir"),
+                "battery2_voltage": latest_solis.get("battery2_voltage"),
+                "battery2_current": _signed_current(latest_solis, "battery2_current", "battery2_current_dir"),
             }
             if not solis_history or solis_history[-1].get("t") != sample_ms:
                 solis_history.append(hist_entry)
@@ -152,6 +165,8 @@ def api_push():
                 "grid_w": latest_sppro.get("grid_w"),
                 "load_w": latest_sppro.get("load_w"),
                 "battery_temperature": latest_sppro.get("battery_temperature"),
+                "battery_voltage": latest_sppro.get("battery_voltage"),
+                "battery_current": latest_sppro.get("battery_current"),
             }
             sppro_history.append(hist_entry)
 
@@ -219,6 +234,10 @@ def api_solis_history():
         "inverter_temp":     [e.get("inverter_temp")     for e in entries],
         "battery_mos_temp":  [e.get("battery_mos_temp")  for e in entries],
         "bms2_battery_temp": [e.get("bms2_battery_temp") for e in entries],
+        "battery_voltage":   [e.get("battery_voltage")   for e in entries],
+        "battery_current":   [e.get("battery_current")   for e in entries],
+        "battery2_voltage":  [e.get("battery2_voltage")  for e in entries],
+        "battery2_current":  [e.get("battery2_current")  for e in entries],
     })
 
 
@@ -250,6 +269,8 @@ def api_sppro_history():
         "grid_w":              [e.get("grid_w")              for e in entries],
         "load_w":              [e.get("load_w")              for e in entries],
         "battery_temperature": [e.get("battery_temperature") for e in entries],
+        "battery_voltage":     [e.get("battery_voltage")     for e in entries],
+        "battery_current":     [e.get("battery_current")     for e in entries],
     })
 
 

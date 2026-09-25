@@ -226,6 +226,10 @@ class SolisModbusReader:
             "inverter_temp": deque(maxlen=self.history_max),
             "battery_mos_temp": deque(maxlen=self.history_max),
             "bms2_battery_temp": deque(maxlen=self.history_max),
+            # signed battery current (+ = charging) and pack 2 voltage
+            "battery_current": deque(maxlen=self.history_max),
+            "battery2_current": deque(maxlen=self.history_max),
+            "battery2_voltage": deque(maxlen=self.history_max),
         }
         self._last_history_minute = -1
 
@@ -493,8 +497,16 @@ class SolisModbusReader:
                     self.history[key].append(new_data.get(key, 0))
                 # None (not 0) when a batch missed, so charts show a gap
                 # rather than a false 0 °C / 0 W
-                for key in ["battery2_power", "inverter_temp", "battery_mos_temp", "bms2_battery_temp"]:
+                for key in ["battery2_power", "inverter_temp", "battery_mos_temp", "bms2_battery_temp",
+                            "battery2_voltage"]:
                     self.history[key].append(new_data.get(key))
+                # the current registers are magnitudes; sign them from the
+                # direction flag (1 = discharging) so + = charging
+                for key, dkey in (("battery_current", "battery_current_dir"),
+                                  ("battery2_current", "battery2_current_dir")):
+                    i = new_data.get(key)
+                    self.history[key].append(
+                        None if i is None else (-abs(i) if new_data.get(dkey) == 1 else abs(i)))
 
     @staticmethod
     def _engineer_fields(d):

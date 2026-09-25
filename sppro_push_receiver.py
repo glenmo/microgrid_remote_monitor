@@ -37,6 +37,8 @@ class SPProPushReceiver:
             "shunt_w":         deque(maxlen=self.history_max),
             "solarinverter_w": deque(maxlen=self.history_max),
             "battery_temperature": deque(maxlen=self.history_max),
+            "battery_voltage":     deque(maxlen=self.history_max),
+            "battery_current":     deque(maxlen=self.history_max),  # + = charging
         }
         self._last_history_minute = -1
 
@@ -62,6 +64,8 @@ class SPProPushReceiver:
                             "load_w", "shunt_w", "solarinverter_w"):
                     self.history[key].append(data.get(key, 0))
                 self.history["battery_temperature"].append(data.get("battery_temperature"))
+                for key in ("battery_voltage", "battery_current"):
+                    self.history[key].append(data.get(key))
 
     # --- reader interface -------------------------------------------------
     def start(self):
