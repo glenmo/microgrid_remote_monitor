@@ -694,6 +694,20 @@ def engineer_view():
     return render_template("engineer.html")
 
 
+# Pages the kiosk display cycles through: the flow diagram and noisy's EV
+# charger status page. Override with ?url=...&url=...&secs=N.
+ROTATE_URLS = ["/flow", "http://192.168.55.6:8090/"]
+ROTATE_SECS = 10
+
+
+@app.route("/rotate")
+def rotate_view():
+    """Serve the kiosk page that cycles full-screen between several pages."""
+    urls = request.args.getlist("url") or ROTATE_URLS
+    secs = request.args.get("secs", ROTATE_SECS, type=int)
+    return render_template("rotate.html", urls=urls, secs=max(secs, 2))
+
+
 # Site icons (favicon set, shared by app.py and server/server_app.py), served
 # at the site root where browsers look for them.
 @app.route("/<any('favicon.ico', 'favicon.svg', 'favicon-96x96.png',"

@@ -184,6 +184,7 @@ SwitchDin (Stormcloud cloud API — optional)
 | Endpoint | Description |
 | --- | --- |
 | `GET /` | Combined dashboard (`combined_v2.html`) |
+| `GET /rotate` | Kiosk page: cycles full-screen between `/flow` and noisy's EV status page (`http://192.168.55.6:8090/`) every 10 s. Override with `?url=...&url=...&secs=N`. rubberduck's kiosk Chromium (`~/.config/labwc/autostart`) opens this page. |
 | `GET /api/data` | Latest Solis data (legacy alias) |
 | `GET /api/history` | Solis 24 h history (legacy alias) |
 | `GET /api/status` | Solis connection status |
