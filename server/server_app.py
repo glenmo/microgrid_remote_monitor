@@ -111,6 +111,11 @@ def api_push():
                 "pv2_power": latest_solis.get("pv2_power", 0),
                 "pv3_power": latest_solis.get("pv3_power", 0),
                 "pv4_power": latest_solis.get("pv4_power", 0),
+                # engineer-page charts (None when absent, so charts gap)
+                "battery2_power": latest_solis.get("battery2_power"),
+                "inverter_temp": latest_solis.get("inverter_temp"),
+                "battery_mos_temp": latest_solis.get("battery_mos_temp"),
+                "bms2_battery_temp": latest_solis.get("bms2_battery_temp"),
             }
             if not solis_history or solis_history[-1].get("t") != sample_ms:
                 solis_history.append(hist_entry)
@@ -141,6 +146,12 @@ def api_push():
                 "load_power": latest_sppro.get("load_power", 0),
                 "grid_power": latest_sppro.get("grid_power", 0),
                 "battery_power": latest_sppro.get("battery_power", 0),
+                # The SP Pro payload's real field names (the four above
+                # don't exist in it and always read 0) - same as rubberduck
+                "battery_w": latest_sppro.get("battery_w"),
+                "grid_w": latest_sppro.get("grid_w"),
+                "load_w": latest_sppro.get("load_w"),
+                "battery_temperature": latest_sppro.get("battery_temperature"),
             }
             sppro_history.append(hist_entry)
 
@@ -204,6 +215,10 @@ def api_solis_history():
         "pv2_power":      [e.get("pv2_power",    0) for e in entries],
         "pv3_power":      [e.get("pv3_power",    0) for e in entries],
         "pv4_power":      [e.get("pv4_power",    0) for e in entries],
+        "battery2_power":    [e.get("battery2_power")    for e in entries],
+        "inverter_temp":     [e.get("inverter_temp")     for e in entries],
+        "battery_mos_temp":  [e.get("battery_mos_temp")  for e in entries],
+        "bms2_battery_temp": [e.get("bms2_battery_temp") for e in entries],
     })
 
 
@@ -231,6 +246,10 @@ def api_sppro_history():
         "load_power":     [e.get("load_power",   0) for e in entries],
         "grid_power":     [e.get("grid_power",   0) for e in entries],
         "battery_power":  [e.get("battery_power",0) for e in entries],
+        "battery_w":           [e.get("battery_w")           for e in entries],
+        "grid_w":              [e.get("grid_w")              for e in entries],
+        "load_w":              [e.get("load_w")              for e in entries],
+        "battery_temperature": [e.get("battery_temperature") for e in entries],
     })
 
 

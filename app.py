@@ -221,6 +221,11 @@ class SolisModbusReader:
             "battery_power": deque(maxlen=self.history_max),
             "battery_voltage": deque(maxlen=self.history_max),
             "grid_frequency": deque(maxlen=self.history_max),
+            # engineer-page charts
+            "battery2_power": deque(maxlen=self.history_max),
+            "inverter_temp": deque(maxlen=self.history_max),
+            "battery_mos_temp": deque(maxlen=self.history_max),
+            "bms2_battery_temp": deque(maxlen=self.history_max),
         }
         self._last_history_minute = -1
 
@@ -486,6 +491,10 @@ class SolisModbusReader:
                 for key in ["battery_soc", "pv_total_power", "active_power",
                             "battery_power", "battery_voltage", "grid_frequency", "pv1_power", "pv2_power", "pv3_power", "pv4_power"]:
                     self.history[key].append(new_data.get(key, 0))
+                # None (not 0) when a batch missed, so charts show a gap
+                # rather than a false 0 °C / 0 W
+                for key in ["battery2_power", "inverter_temp", "battery_mos_temp", "bms2_battery_temp"]:
+                    self.history[key].append(new_data.get(key))
 
     @staticmethod
     def _engineer_fields(d):

@@ -167,6 +167,7 @@ class SPProSxReader:
             "load_w":          deque(maxlen=self.history_max),
             "shunt_w":         deque(maxlen=self.history_max),
             "solarinverter_w": deque(maxlen=self.history_max),
+            "battery_temperature": deque(maxlen=self.history_max),
         }
         self._last_history_minute = -1
 
@@ -252,6 +253,7 @@ class SPProSxReader:
                     for key in ("battery_soc", "battery_w", "grid_w",
                                 "load_w", "shunt_w", "solarinverter_w"):
                         self.history[key].append(new_data.get(key, 0))
+                    self.history["battery_temperature"].append(new_data.get("battery_temperature"))
         except Exception as e:
             log.warning(f"SP Pro: poll error: {type(e).__name__}: {e}")
             self.read_errors += 1

@@ -48,6 +48,9 @@ header h1 .solis { color: var(--accent-orange); }
 
 main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+.charts { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 860px) { .charts { grid-template-columns: 1fr; } }
+.chart-box { position: relative; height: 280px; }
 .inverter-column { display: flex; flex-direction: column; gap: 8px; }
 .col-label {
     font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted);
@@ -222,6 +225,17 @@ table.grid tr:last-child td { border-bottom: none; }
                     <tr><td>PV generation</td><td id="solis-e-pv-t">—</td><td id="solis-e-pv-l">—</td></tr>
                 </tbody>
             </table>
+        </div>
+    </section>
+    <!-- ================= 24 h CHARTS ================= -->
+    <section class="charts">
+        <div class="card">
+            <div class="card-title">Temperatures — last 24 h <span class="note">°C</span></div>
+            <div class="chart-box"><canvas id="tempChart"></canvas></div>
+        </div>
+        <div class="card">
+            <div class="card-title">Site power balance — last 24 h <span class="note">kW · batteries + = charging · generator + = supplying</span></div>
+            <div class="chart-box"><canvas id="powerChart"></canvas></div>
         </div>
     </section>
 </main>
@@ -429,8 +443,124 @@ async function fetchAll() {
     } catch (e) { console.warn(e); }
 }
 
+// ---------------- 24 h history charts ----------------
+// Points are {x: epoch ms, y} on a linear time axis (same approach as the
+// dashboard), so SP Pro and Solis series line up by real sample time.
+const HOUR_MS = 3600 * 1000, DAY_MS = 24 * HOUR_MS;
+const GAP_MS = 12 * 60 * 1000;  // break lines across gaps longer than this
+const hhmm = ms => new Date(ms).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false});
+function timeAxis() {
+    return {
+        type: 'linear', grid: {color: '#1e293b'},
+        ticks: { color: '#94a3b8', maxTicksLimit: 12, callback: v => hhmm(v) },
+        // ticks on local whole hours rather than at the axis min
+        afterBuildTicks: axis => {
+            const step = axis.options.ticks.stepSize;
+            if (!step) return;
+            const off = new Date().getTimezoneOffset() * 60000;
+            const ticks = [];
+            for (let t = Math.ceil((axis.min - off) / step) * step + off; t <= axis.max; t += step)
+                ticks.push({ value: t });
+            axis.ticks = ticks;
+        },
+    };
+}
+function setRange(chart, min, max = Date.now()) {
+    const x = chart.options.scales.x;
+    x.min = min; x.max = max;
+    x.ticks.stepSize = [1, 2, 3, 6, 12].find(h => (max - min) / (h * HOUR_MS) <= 10) * HOUR_MS || DAY_MS;
+}
+// Points from a history response: value(i) returns a number or null (gap).
+function series(h, value, since) {
+    const t = h?.t || [], out = [];
+    for (let i = 0; i < t.length; i++) {
+        if (t[i] == null || t[i] < since) continue;
+        const v = value(i);
+        out.push({ x: t[i], y: (v === null || v === undefined || Number.isNaN(v)) ? null : v });
+    }
+    return out;
+}
+const col = (h, k, scale = 1) => i => (h?.[k]?.[i] == null ? null : Number(h[k][i]) * scale);
+function line(label, color, dash) {
+    return { label, data: [], borderColor: color, backgroundColor: color, borderWidth: 2,
+             borderDash: dash || [], pointRadius: 0, tension: 0.2, spanGaps: GAP_MS };
+}
+function historyChart(id, yTitle, datasets) {
+    return new Chart(document.getElementById(id).getContext('2d'), {
+        type: 'line',
+        data: { datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            interaction: { mode: 'nearest', axis: 'x', intersect: false },
+            scales: {
+                x: timeAxis(),
+                y: { grid: {color: '#1e293b'}, ticks: {color: '#94a3b8'},
+                     title: { display: true, text: yTitle, color: '#94a3b8' } },
+            },
+            plugins: {
+                legend: { labels: { color: '#e8edf2', boxWidth: 12 } },
+                tooltip: { callbacks: {
+                    title: items => items.length ? new Date(items[0].parsed.x).toLocaleString([], {
+                        weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+                    label: item => `${item.dataset.label}: ${fmt(item.parsed.y, 1)}` } },
+            },
+        },
+    });
+}
+const tempChart = historyChart('tempChart', '°C', [
+    line('Solis inverter', '#f97316'),
+    line('Solis battery MOSFET', '#eab308'),
+    line('Solis pack 2 (BMS)', '#22c55e'),
+    line('SP Pro battery', '#3b82f6'),
+]);
+const powerChart = historyChart('powerChart', 'kW', [
+    line('Solis PV', '#eab308'),
+    line('Solis batteries', '#f97316'),
+    line('Solis AC output', '#a855f7', [4, 3]),
+    line('SP Pro battery', '#3b82f6'),
+    line('Generator', '#ef4444'),
+    line('Load', '#e8edf2'),
+]);
+
+async function fetchHistory() {
+    try {
+        const [sppH, solH] = await Promise.all([
+            noCacheFetch('/api/sppro/history').then(r=>r.json()).catch(()=>({})),
+            noCacheFetch('/api/solis/history').then(r=>r.json()).catch(()=>({})),
+        ]);
+        const since = Date.now() - DAY_MS;
+        const kW = 1 / 1000;
+
+        tempChart.data.datasets[0].data = series(solH, col(solH, 'inverter_temp'), since);
+        tempChart.data.datasets[1].data = series(solH, col(solH, 'battery_mos_temp'), since);
+        tempChart.data.datasets[2].data = series(solH, col(solH, 'bms2_battery_temp'), since);
+        tempChart.data.datasets[3].data = series(sppH, col(sppH, 'battery_temperature'), since);
+        setRange(tempChart, since);
+        tempChart.update('none');
+
+        // Solis batteries: pack 1 + pack 2 on Modbus; SolisCloud's
+        // battery_power is already combined (no battery2_power column).
+        const solBatt = i => {
+            const a = solH.battery_power?.[i], b = solH.battery2_power?.[i];
+            return (a == null && b == null) ? null : (Number(a || 0) + Number(b || 0)) * kW;
+        };
+        // SP Pro grid_w is the generator input, negative while it supplies.
+        const gen = i => (sppH.grid_w?.[i] == null ? null : -Number(sppH.grid_w[i]) * kW);
+        powerChart.data.datasets[0].data = series(solH, col(solH, 'pv_total_power', kW), since);
+        powerChart.data.datasets[1].data = series(solH, solBatt, since);
+        powerChart.data.datasets[2].data = series(solH, col(solH, 'active_power', kW), since);
+        powerChart.data.datasets[3].data = series(sppH, col(sppH, 'battery_w', kW), since);
+        powerChart.data.datasets[4].data = series(sppH, gen, since);
+        powerChart.data.datasets[5].data = series(sppH, col(sppH, 'load_w', kW), since);
+        setRange(powerChart, since);
+        powerChart.update('none');
+    } catch (e) { console.warn(e); }
+}
+
 fetchAll();
+fetchHistory();
 setInterval(fetchAll, 5000);
+setInterval(fetchHistory, 60000);
 setInterval(tickFresh, 1000);
 </script>
 </body>
