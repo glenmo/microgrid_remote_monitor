@@ -200,15 +200,6 @@ table.grid tr:last-child td { border-bottom: none; }
             </table>
         </div>
 
-        <div class="card">
-            <div class="card-title">Energy ledger <span class="note">kWh</span></div>
-            <table class="grid">
-                <thead><tr><th></th><th>Today</th><th>Lifetime</th></tr></thead>
-                <tbody>
-                    <tr><td>PV generation</td><td id="solis-e-pv-t">—</td><td id="solis-e-pv-l">—</td></tr>
-                </tbody>
-            </table>
-        </div>
     </section>
     <!-- ================= 24 h CHARTS ================= -->
     <section class="charts">
@@ -252,6 +243,16 @@ table.grid tr:last-child td { border-bottom: none; }
                 <tr><th>Inverter clock</th><td id="solis-clock">—</td></tr>
             </table>
         </div>
+    </div>
+    <!-- Solis energy ledger (bottom) -->
+    <div class="card">
+        <div class="card-title">Solis energy ledger <span class="note">kWh</span></div>
+        <table class="grid">
+            <thead><tr><th></th><th>Today</th><th>Lifetime</th></tr></thead>
+            <tbody>
+                <tr><td>PV generation</td><td id="solis-e-pv-t">—</td><td id="solis-e-pv-l">—</td></tr>
+            </tbody>
+        </table>
     </div>
 </main>
 
