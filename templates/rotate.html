@@ -20,25 +20,24 @@
 </head>
 <body>
 <script>
-  const URLS = {{ urls | tojson }};
-  const SECS = {{ secs | tojson }};
+  const PAGES = {{ pages | tojson }};  // [{url, secs}, ...]
 
-  const frames = URLS.map(url => {
+  const frames = PAGES.map(p => {
     const f = document.createElement("iframe");
-    f.src = url;
+    f.src = p.url;
     document.body.appendChild(f);
     return f;
   });
 
   let current = 0;
   frames[0].classList.add("active");
-  if (frames.length > 1) {
-    setInterval(() => {
-      frames[current].classList.remove("active");
-      current = (current + 1) % frames.length;
-      frames[current].classList.add("active");
-    }, SECS * 1000);
+  function next() {
+    frames[current].classList.remove("active");
+    current = (current + 1) % frames.length;
+    frames[current].classList.add("active");
+    setTimeout(next, PAGES[current].secs * 1000);
   }
+  if (frames.length > 1) setTimeout(next, PAGES[0].secs * 1000);
 </script>
 </body>
 </html>
