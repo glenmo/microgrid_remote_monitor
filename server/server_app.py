@@ -26,7 +26,7 @@ from collections import deque
 from datetime import datetime
 from functools import wraps
 
-from flask import Flask, jsonify, render_template, request, abort
+from flask import Flask, jsonify, render_template, request, abort, send_from_directory
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -41,6 +41,8 @@ log = logging.getLogger("monitor_server")
 # Flask app
 # ---------------------------------------------------------------------------
 app = Flask(__name__, template_folder="templates", static_folder="static")
+# Site icons live in the repo-root static/icons/ (shared with app.py)
+ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static", "icons")
 
 # ---------------------------------------------------------------------------
 # Data store (in-memory with history)
@@ -315,6 +317,22 @@ def dashboard():
 def flow_diagram():
     """Public microgrid power-flow diagram (non-technical view)."""
     return render_template("flow_diagram.html")
+
+
+@app.route("/engineer")
+def engineer_view():
+    """Engineer-focused detail page (linked from the dashboard header)."""
+    return render_template("engineer.html")
+
+
+# Site icons (favicon set, shared by app.py and server/server_app.py), served
+# at the site root where browsers look for them.
+@app.route("/<any('favicon.ico', 'favicon.svg', 'favicon-96x96.png',"
+           " 'apple-touch-icon.png', 'web-app-manifest-192x192.png',"
+           " 'web-app-manifest-512x512.png', 'site.webmanifest'):fname>")
+def site_icon(fname):
+    mimetype = "application/manifest+json" if fname.endswith(".webmanifest") else None
+    return send_from_directory(ICON_DIR, fname, mimetype=mimetype, max_age=86400)
 
 
 @app.route("/combined/")
