@@ -79,6 +79,7 @@ directly (rubberduck) or replaying push payloads from the Pi (VPS).
 | File | What it does |
 | --- | --- |
 | `app.py` | Flask app that runs on rubberduck. Polls Solis (Modbus TCP), SP Pro, and optionally SwitchDin Stormcloud. Serves `combined_v2.html` on `:5000`. |
+| `solis_cloud_reader.py` | SolisCloud API reader — fallback Solis source when local Modbus is unavailable (used automatically when `--solis-cloud-*` credentials are given). Cloud data arrives every ~2–5 min with frequent upload gaps; on start it backfills yesterday's and today's samples from the day-history API. |
 | `sppro_reader.py` | SP Pro Modbus TCP reader. Used when the SP Pro Modbus interface is enabled. |
 | `sppro_sx_reader.py` | SP Pro selpi-protocol reader (TCP 10001 with password). Production reader on rubberduck. Wraps the vendored `selpi` library in `vendor/selpi/`. |
 | `vendor/selpi/` | Vendored Selectronic Sx-protocol library (auth + decode) used by `sppro_sx_reader.py`. Runtime-only copy. |
@@ -144,12 +145,20 @@ traffic-light app on `:8765`, `/advanced/` to the combined dashboard on
 --host             Flask listen address              (default: 0.0.0.0)
 --port             Flask listen port                 (default: 5000)
 
-Solis (Modbus TCP)
+Solis (Modbus TCP — production source)
 --solis-ip         Solis inverter IP                 (default: 192.168.11.214)
 --solis-port       Solis Modbus TCP port             (default: 502)
 --solis-id         Solis Modbus slave ID             (default: 1)
---solis-poll       Solis poll interval (seconds)     (default: 5)
+--solis-poll       Solis poll interval (seconds)     (default: 5; production: 10)
 --no-solis         Disable the Solis reader
+
+Solis (SolisCloud API — fallback; if key-id, key-secret and sn are all
+given, the cloud is used INSTEAD of Modbus)
+--solis-cloud-key-id      SolisCloud API key ID
+--solis-cloud-key-secret  SolisCloud API key secret
+--solis-cloud-sn          Inverter serial number
+--solis-cloud-id          Inverter ID (optional)
+--solis-cloud-poll        Poll interval (seconds)    (default: 60, min 30)
 
 SP Pro (selpi or Modbus TCP)
 --sppro-ip         SP Pro IP                         (default: 192.168.11.240)
@@ -242,8 +251,18 @@ the local production reader on rubberduck.
 
 ## Network setup
 
-- **Solis** — Ethernet on the LAN at 192.168.11.214:502 (Modbus TCP,
-  slave ID 1).
+- **Solis** — read locally over Modbus TCP at 192.168.11.214:502 (slave
+  ID 1), polled every 10 s by rubberduck. The Modbus server is the Solis
+  **S2-WL-ST datalogger stick** (S/N 7A124B120CB0700E) plugged into the
+  inverter's COM port — specifically its **Ethernet port** (MAC
+  `ec:c9:ff:97:47:d8`). The same stick uploads the SolisCloud data. If its
+  Ethernet cable is unplugged, .214 disappears ("No route to host") and
+  Solis data stops — fall back to SolisCloud with the `--solis-cloud-*`
+  args if needed. The stick also services its own cloud uploads, so
+  occasional late replies (`transaction_id` mismatch in the log) are
+  expected; the reader reconnects automatically. (192.168.11.81 is an
+  unidentified ESP32 device that accepts TCP on 502 but never answers
+  Modbus — not the Solis.)
 - **SP Pro** — Ethernet on the LAN at 192.168.11.240. The site uses the
   proprietary Selectronic *selpi* protocol on TCP 10001 with a password;
   this is what the production `microgrid-monitor.service` ExecStart uses.
