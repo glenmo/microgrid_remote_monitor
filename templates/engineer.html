@@ -131,6 +131,22 @@ table.grid tr:last-child td { border-bottom: none; }
                 <tr><th>Load power</th><td><span id="sppro-load">—</span><small>W</small></td></tr>
             </table>
         </div>
+
+        <div class="card">
+            <div class="card-title">Energy ledger <span class="note">kWh</span></div>
+            <table class="grid">
+                <thead><tr><th></th><th>Today</th><th>Lifetime</th></tr></thead>
+                <tbody>
+                    <tr><td>Solar (DC shunt)</td><td id="sppro-e-solar-t">—</td><td id="sppro-e-solar-l">—</td></tr>
+                    <tr><td>Load</td><td id="sppro-e-load-t">—</td><td id="sppro-e-load-l">—</td></tr>
+                    <tr><td>Battery in (charge)</td><td id="sppro-e-bin-t">—</td><td id="sppro-e-bin-l">—</td></tr>
+                    <tr><td>Battery out (discharge)</td><td id="sppro-e-bout-t">—</td><td id="sppro-e-bout-l">—</td></tr>
+                    <tr><td>Generator in</td><td id="sppro-e-gin-t">—</td><td id="sppro-e-gin-l">—</td></tr>
+                    <tr><td>Generator out</td><td id="sppro-e-gout-t">—</td><td id="sppro-e-gout-l">—</td></tr>
+                    <tr><td>Battery round-trip <small>(out ÷ in)</small></td><td>—</td><td id="sppro-e-rte">—</td></tr>
+                </tbody>
+            </table>
+        </div>
     </section>
 
     <!-- ================= SOLIS ================= -->
@@ -153,7 +169,7 @@ table.grid tr:last-child td { border-bottom: none; }
                 </table>
             </div>
             <table class="grid" id="solis-packs-table" style="margin-top:6px;">
-                <thead><tr><th>Pack</th><th>SoC %</th><th>SoH %</th><th>V</th><th>A</th><th>°C</th><th>W</th></tr></thead>
+                <thead><tr><th>Pack</th><th>SoC %</th><th>SoH %</th><th>V</th><th>A</th><th>°C</th><th>W</th><th>Limit A <small>chg/dis</small></th></tr></thead>
                 <tbody id="solis-packs"></tbody>
             </table>
         </div>
@@ -168,13 +184,43 @@ table.grid tr:last-child td { border-bottom: none; }
         </div>
 
         <div class="card">
-            <div class="card-title">Inverter &amp; AC</div>
+            <div class="card-title">Inverter &amp; AC <span class="note" id="solis-ac-kind"></span></div>
             <table class="kv">
                 <tr><th>Inverter temperature</th><td><span id="solis-inv-temp">—</span><small>°C</small></td></tr>
                 <tr><th>Grid frequency</th><td><span id="solis-freq">—</span><small>Hz</small></td></tr>
                 <tr><th>Phase A</th><td><span id="solis-vac-a">—</span><small>V</small> · <span id="solis-iac-a">—</span><small>A</small></td></tr>
                 <tr><th>Phase B</th><td><span id="solis-vac-b">—</span><small>V</small> · <span id="solis-iac-b">—</span><small>A</small></td></tr>
                 <tr><th>Phase C</th><td><span id="solis-vac-c">—</span><small>V</small> · <span id="solis-iac-c">—</span><small>A</small></td></tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Status &amp; faults <span class="note">raw register values — local Modbus only</span></div>
+            <table class="kv">
+                <tr><th>Working mode</th><td id="solis-st-mode">—</td></tr>
+                <tr><th>Inverter status</th><td id="solis-st-inv">—</td></tr>
+                <tr><th>Operating status</th><td id="solis-st-op">—</td></tr>
+                <tr><th>BMS status <small>(pack 1 / 2)</small></th><td id="solis-st-bms">—</td></tr>
+                <tr><th>Fault code 01</th><td id="solis-fault-1">—</td></tr>
+                <tr><th>Fault code 02</th><td id="solis-fault-2">—</td></tr>
+                <tr><th>Fault code 03</th><td id="solis-fault-3">—</td></tr>
+                <tr><th>Fault code 04</th><td id="solis-fault-4">—</td></tr>
+                <tr><th>DC bus voltage</th><td><span id="solis-dcbus">—</span><small>V</small></td></tr>
+                <tr><th>Backup port <small>(phase A)</small></th><td><span id="solis-bk-v">—</span><small>V</small> · <span id="solis-bk-i">—</span><small>A</small></td></tr>
+                <tr><th>Battery MOSFET temp</th><td><span id="solis-mos-temp">—</span><small>°C</small></td></tr>
+                <tr><th>Active / reactive / apparent</th><td><span id="solis-p">—</span><small>W</small> · <span id="solis-q">—</span><small>var</small> · <span id="solis-sva">—</span><small>VA</small></td></tr>
+                <tr><th>Power factor</th><td id="solis-pf">—</td></tr>
+                <tr><th>Inverter clock</th><td id="solis-clock">—</td></tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Energy ledger <span class="note">kWh</span></div>
+            <table class="grid">
+                <thead><tr><th></th><th>Today</th><th>Lifetime</th></tr></thead>
+                <tbody>
+                    <tr><td>PV generation</td><td id="solis-e-pv-t">—</td><td id="solis-e-pv-l">—</td></tr>
+                </tbody>
             </table>
         </div>
     </section>
@@ -232,9 +278,12 @@ function renderFresh(id, label, lr, conn, warnS, badS) {
     el.className = 'pill ' + cls;
     el.textContent = `${label}: ${shown} ago`;
 }
+// Solis thresholds follow its poll interval: ~10 s on local Modbus, 60 s+
+// (with ~5 min data) on SolisCloud.
+let solWarnS = 420, solBadS = 900;
 function tickFresh() {
     renderFresh('sppro-fresh', 'SP Pro', sppLastRead, sppConn, 30, 60);   // ~10s cadence
-    renderFresh('solis-fresh', 'Solis',  solLastRead, solConn, 420, 900); // ~5min cadence
+    renderFresh('solis-fresh', 'Solis',  solLastRead, solConn, solWarnS, solBadS);
 }
 
 function renderSPPro(d, status) {
@@ -253,19 +302,52 @@ function renderSPPro(d, status) {
     setText('sppro-solar-today', fmt(d.solar_wh_today, 1));
     setText('sppro-grid', fmt(d.grid_w, 0));
     setText('sppro-load', fmt(d.load_w, 0));
+
+    // Energy ledger (selpi labels these *_wh but the values are kWh)
+    for (const [id, k] of [['solar', 'solar_wh'], ['load', 'load_wh'], ['bin', 'battery_in_wh'],
+                           ['bout', 'battery_out_wh'], ['gin', 'grid_in_wh'], ['gout', 'grid_out_wh']]) {
+        setText(`sppro-e-${id}-t`, fmt(d[k + '_today'], 1));
+        setText(`sppro-e-${id}-l`, fmt(d[k + '_total'], 0));
+    }
+    const bin = Number(d.battery_in_wh_total), bout = Number(d.battery_out_wh_total);
+    setText('sppro-e-rte', bin > 0 && bout >= 0 ? `${fmt(bout / bin * 100, 1)} %` : '—');
+}
+
+// Fault registers are bitfields: 0 = no fault; otherwise show hex + set bits.
+function faultText(v) {
+    if (v === null || v === undefined) return '—';
+    v = Number(v);
+    if (v === 0) return 'OK (0)';
+    const bits = [];
+    for (let b = 0; b < 16; b++) if (v & (1 << b)) bits.push(b);
+    return `0x${v.toString(16).toUpperCase().padStart(4, '0')} · bits ${bits.join(', ')}`;
+}
+function rawText(v) {
+    if (v === null || v === undefined) return '—';
+    v = Number(v);
+    return `${v} (0x${v.toString(16).toUpperCase().padStart(4, '0')})`;
 }
 
 function renderSolis(d, status) {
     solConn = !!status?.connected; solLastRead = status?.last_read || null;
+    const poll = Number(status?.poll_interval) || 60;
+    solWarnS = Math.max(30, poll * 3); solBadS = Math.max(60, poll * 6);
+    if (poll >= 60) { solWarnS = 420; solBadS = 900; }   // SolisCloud: ~5 min data
     if (!d || d.error) { setText('solis-mode', 'Not available'); return; }
     const soc = Number(d.battery_soc ?? 0);
     updateGauge(solGauge, soc); setText('solis-soc', `${fmt(soc, 0)}%`);
-    const battW = Number(d.battery_power ?? 0);
+    // Total across packs: Modbus reports pack 2 separately (battery2_power);
+    // SolisCloud's battery_power is already combined (no battery2_power).
+    const battW = Number(d.battery_power ?? 0) + Number(d.battery2_power ?? 0);
     setText('solis-mode', powerMode(battW));
-    setText('solis-batt-type', d.battery_type ? `${d.battery_type} · ${fmt(d.battery_count,0)} packs` : '—');
+    setText('solis-batt-type', d.battery_type ? `${d.battery_type} · ${fmt(d.battery_count,0)} packs`
+                               : (d.battery_count ? `${fmt(d.battery_count,0)} packs` : '—'));
     setText('solis-soh',   fmt(d.battery_soh, 0));
     setText('solis-volt',  fmt(d.battery_voltage, 1));
-    setText('solis-curr',  fmt(d.battery_current, 1));
+    // Modbus: sum the packs' signed currents so current matches the total power
+    const packsI = Array.isArray(d.battery_packs) && d.battery2_power !== undefined
+        ? d.battery_packs.reduce((a, p) => a + Number(p.current || 0), 0) : null;
+    setText('solis-curr',  fmt(packsI ?? d.battery_current, 1));
     setText('solis-temp',  fmt(d.battery_temperature, 1));
     setText('solis-power', fmt(battW, 0));
     setText('solis-cclim', fmt(d.battery_charge_current_limit, 0));
@@ -276,6 +358,37 @@ function renderSolis(d, status) {
     setText('solis-vac-b', fmt(d.ac_voltage_b, 1)); setText('solis-iac-b', fmt(d.ac_current_b, 1));
     setText('solis-vac-c', fmt(d.ac_voltage_c, 1)); setText('solis-iac-c', fmt(d.ac_current_c, 1));
     setText('solis-pv-total', `${fmt(d.pv_total_power, 0)} W total`);
+    setText('solis-ac-kind', d.ac_voltage_kind === 'line-to-line' ? 'voltages line-to-line (A-B, B-C, C-A)' : '');
+
+    // Status & faults (raw registers; decoding needs the Solis protocol appendix)
+    setText('solis-st-mode', rawText(d.working_mode));
+    setText('solis-st-inv',  rawText(d.inverter_status));
+    setText('solis-st-op',   rawText(d.operating_status));
+    setText('solis-st-bms',  (d.bms_status ?? null) === null && (d.bms2_status ?? null) === null ? '—'
+                             : `${rawText(d.bms_status)} / ${rawText(d.bms2_status)}`);
+    for (let n = 1; n <= 4; n++) {
+        const v = d[`fault_code_0${n}`];
+        const el = document.getElementById(`solis-fault-${n}`);
+        if (el) { el.textContent = faultText(v); el.style.color = (v ? '#f97316' : ''); }
+    }
+    setText('solis-dcbus', fmt(d.dc_bus_voltage, 1));
+    setText('solis-bk-v', fmt(d.backup_voltage, 1)); setText('solis-bk-i', fmt(d.backup_current, 1));
+    setText('solis-mos-temp', fmt(d.battery_mos_temp, 1));
+    setText('solis-p', fmt(d.active_power, 0)); setText('solis-q', fmt(d.reactive_power, 0));
+    setText('solis-sva', fmt(d.apparent_power, 0));
+    const sva = Math.abs(Number(d.apparent_power));
+    setText('solis-pf', sva > 50 && d.active_power !== undefined ? fmt(Number(d.active_power) / sva, 2) : '—');
+    if (d.year) {
+        const pad = n => String(n).padStart(2, '0');
+        const inv = new Date(d.year < 100 ? 2000 + d.year : d.year, d.month - 1, d.day, d.hour, d.minute);
+        const drift = Math.round((inv - Date.now()) / 60000);
+        setText('solis-clock', `${d.year < 100 ? 2000 + d.year : d.year}-${pad(d.month)}-${pad(d.day)} ${pad(d.hour)}:${pad(d.minute)}`
+                + (Math.abs(drift) >= 2 ? ` · ${drift > 0 ? '+' : ''}${drift} min vs this browser` : ' · in sync'));
+    } else { setText('solis-clock', '—'); }
+
+    // Energy ledger
+    setText('solis-e-pv-t', fmt(d.pv_today_energy, 1));
+    setText('solis-e-pv-l', fmt(d.pv_total_energy, 0));
 
     // Per-pack battery table
     const packs = Array.isArray(d.battery_packs) ? d.battery_packs : [];
@@ -286,7 +399,8 @@ function renderSolis(d, status) {
         pbody.innerHTML = packs.map(p => `<tr>
             <td>#${p.i}</td><td>${fmt(p.soc,0)}</td><td>${fmt(p.soh,0)}</td>
             <td>${fmt(p.voltage,1)}</td><td>${fmt(p.current,1)}</td>
-            <td>${fmt(p.temperature,1)}</td><td>${fmt(p.power,0)}</td></tr>`).join('');
+            <td>${fmt(p.temperature,1)}</td><td>${fmt(p.power,0)}</td>
+            <td>${p.charge_limit != null ? `${fmt(p.charge_limit,0)} / ${fmt(p.discharge_limit,0)}` : '—'}</td></tr>`).join('');
     } else { ptbl.style.display = 'none'; }
 
     // Per-string PV table

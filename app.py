@@ -442,6 +442,8 @@ class SolisModbusReader:
         if "active_power" in new_data:
             new_data["inverter_ac_power"] = new_data["active_power"]
 
+        new_data.update(self._engineer_fields({**self.data, **new_data}))
+
         # PV per-tracker power (V × I, watts) — for the per-tracker generation chart
         for n in (1, 2, 3, 4):
             v = new_data.get(f"pv{n}_voltage", 0) or 0
@@ -484,6 +486,68 @@ class SolisModbusReader:
                 for key in ["battery_soc", "pv_total_power", "active_power",
                             "battery_power", "battery_voltage", "grid_frequency", "pv1_power", "pv2_power", "pv3_power", "pv4_power"]:
                     self.history[key].append(new_data.get(key, 0))
+
+    @staticmethod
+    def _engineer_fields(d):
+        """Engineer-page fields under the same names/shapes SolisCloudReader
+        produces (pv_strings, battery_packs, ac_*, temperatures, limits), so
+        /engineer works with either Solis source. Additive only."""
+        def signed(i, direction):
+            # battery current magnitude + direction flag (1 = discharging)
+            return -abs(i) if direction == 1 else abs(i)
+
+        pv_strings = []
+        for n in (1, 2, 3, 4):
+            v = d.get(f"pv{n}_voltage") or 0
+            i = d.get(f"pv{n}_current") or 0
+            if v or i:
+                pv_strings.append({"i": n, "voltage": round(v, 1), "current": round(i, 2),
+                                   "power": d.get(f"pv{n}_power", round(v * i, 1))})
+
+        # bms*_battery_voltage is omitted: on these HV packs it reads ~35 V
+        # against ~684 V actual (wrong register/scale for this BMS).
+        packs = []
+        if "battery_voltage" in d:
+            packs.append({
+                "i": 1, "soc": d.get("battery_soc"), "soh": d.get("battery_soh"),
+                "voltage": d.get("battery_voltage"),
+                "current": signed(d.get("battery_current", 0), d.get("battery_current_dir")),
+                "temperature": None,   # no BMS1 cell-temperature register mapped
+                "power": d.get("battery_power"),
+                "bms_current": d.get("bms_battery_current"),
+                "charge_limit": d.get("bms_charge_limit"), "discharge_limit": d.get("bms_discharge_limit"),
+            })
+        if "battery2_voltage" in d:
+            packs.append({
+                "i": 2, "soc": d.get("bms2_battery_soc"), "soh": d.get("bms2_battery_soh"),
+                "voltage": d.get("battery2_voltage"),
+                "current": signed(d.get("battery2_current", 0), d.get("battery2_current_dir")),
+                "temperature": d.get("bms2_battery_temp"),
+                "power": d.get("battery2_power"),
+                "bms_current": d.get("bms2_battery_current"),
+                "charge_limit": d.get("bms2_charge_limit"), "discharge_limit": d.get("bms2_discharge_limit"),
+                "charge_voltage_limit": d.get("bms2_charge_voltage_limit"),
+            })
+
+        temps = [p["temperature"] for p in packs if p["temperature"] is not None]
+        limit = lambda k: round(sum(p[k] or 0 for p in packs), 1) if packs else None
+        return {
+            "pv_strings": pv_strings,
+            "battery_packs": packs,
+            "battery_count": len(packs),
+            "battery_temperature": round(sum(temps) / len(temps), 1) if temps else None,
+            "battery_charge_current_limit": limit("charge_limit"),
+            "battery_discharge_current_limit": limit("discharge_limit"),
+            "inverter_temperature": d.get("inverter_temp"),
+            # Modbus 33073-33075 are line-to-line (A-B, B-C, C-A)
+            "ac_voltage_kind": "line-to-line",
+            "ac_voltage_a": d.get("grid_voltage_ab"),
+            "ac_voltage_b": d.get("grid_voltage_bc"),
+            "ac_voltage_c": d.get("grid_voltage_ca"),
+            "ac_current_a": d.get("grid_current_a"),
+            "ac_current_b": d.get("grid_current_b"),
+            "ac_current_c": d.get("grid_current_c"),
+        }
 
     def _poll_loop(self):
         """Background polling loop with a staleness watchdog.
