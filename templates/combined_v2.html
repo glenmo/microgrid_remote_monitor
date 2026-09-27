@@ -87,7 +87,7 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .span-2 { grid-column: 1 / -1; }
 
-.totals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.totals-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .total-tile { background: var(--bg-primary); border-radius: 6px; padding: 8px 10px; }
 .total-tile .lbl { font-size: 9px; letter-spacing: 1px; color: var(--text-muted); text-transform: uppercase; }
 .total-tile .val { font-size: 22px; font-weight: 600; }
@@ -300,6 +300,11 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
                 <div class="lbl">Solar now</div>
                 <div class="val"><span id="t-pv">—</span> W</div>
                 <div class="breakdown">SP Pro <span id="t-pv-sppro">—</span> · Solis <span id="t-pv-solis">—</span></div>
+            </div>
+            <div class="total-tile">
+                <div class="lbl">House solar now</div>
+                <div class="val"><span id="t-house">—</span> W</div>
+                <div class="breakdown">inferred surplus direct to microgrid</div>
             </div>
             <div class="total-tile">
                 <div class="lbl">Battery flow now</div>
@@ -618,6 +623,22 @@ function renderTotals(spp, sppStatus, sol, solStatus) {
     setText('t-batt', fmt(sppBatt + solBatt, 0));
     setText('t-batt-sppro', sppOk ? `${fmt(sppBatt, 0)} W` : 'offline');
     setText('t-batt-solis', solOk ? `${fmt(solBatt, 0)} W` : 'offline');
+
+    // House rooftop solar isn't metered. Solis and SP Pro NET power to the bus
+    // (charging negative) should balance; if they sum below zero (SP Pro
+    // charging harder than the Solis exports) the shortfall is the houses'
+    // surplus. Same inference as the flow and engineer pages.
+    if (sppOk && solOk) {
+        const ac = sol?.inverter_ac_power;
+        const solisToBus = (ac !== undefined && ac !== null) ? Number(ac)
+                           : Number(sol?.pv_total_power ?? 0) - solBatt;
+        const gw = Number(spp?.grid_w ?? 0);
+        const spproToBus = -sppBatt + (gw < -200 ? -gw : 0);
+        const house = Math.max(0, -(solisToBus + spproToBus));
+        setText('t-house', fmt(house < 50 ? 0 : house, 0));
+    } else {
+        setText('t-house', '—');
+    }
 
     const socs = [];
     if (sppOk) socs.push(Number(spp?.battery_soc ?? 0));
