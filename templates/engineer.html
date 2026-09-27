@@ -87,6 +87,18 @@ table.grid th { color: var(--text-muted); font-weight: 500; font-size: 10px; let
 table.grid th:first-child, table.grid td:first-child { text-align: left; color: var(--text-secondary); }
 table.grid tr:last-child td { border-bottom: none; }
 .empty { color: var(--text-muted); font-size: 12px; padding: 6px; }
+
+/* Phones: tighter chrome, card notes on their own line, taller charts so the
+   plot area survives the multi-row legends. */
+@media (max-width: 600px) {
+    body { padding: 8px; }
+    header { margin-bottom: 8px; }
+    header h1 { font-size: 18px; }
+    .card { padding: 10px; }
+    .card-title { flex-direction: column; align-items: flex-start; gap: 2px; }
+    .chart-box { height: 320px; }
+    table.kv { font-size: 12px; }
+}
 </style>
 </head>
 <body>
@@ -488,13 +500,16 @@ async function fetchAll() {
 // ---------------- 24 h history charts ----------------
 // Points are {x: epoch ms, y} on a linear time axis (same approach as the
 // dashboard), so SP Pro and Solis series line up by real sample time.
+// Phone-width screens get fewer time ticks and a smaller legend (checked once
+// at load; the page reloads its data, not its layout).
+const NARROW = window.matchMedia('(max-width: 600px)').matches;
 const HOUR_MS = 3600 * 1000, DAY_MS = 24 * HOUR_MS;
 const GAP_MS = 12 * 60 * 1000;  // break lines across gaps longer than this
 const hhmm = ms => new Date(ms).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false});
 function timeAxis() {
     return {
         type: 'linear', grid: {color: '#1e293b'},
-        ticks: { color: '#94a3b8', maxTicksLimit: 12, callback: v => hhmm(v) },
+        ticks: { color: '#94a3b8', maxTicksLimit: NARROW ? 6 : 12, callback: v => hhmm(v) },
         // ticks on local whole hours rather than at the axis min
         afterBuildTicks: axis => {
             const step = axis.options.ticks.stepSize;
@@ -510,7 +525,7 @@ function timeAxis() {
 function setRange(chart, min, max = Date.now()) {
     const x = chart.options.scales.x;
     x.min = min; x.max = max;
-    x.ticks.stepSize = [1, 2, 3, 6, 12].find(h => (max - min) / (h * HOUR_MS) <= 10) * HOUR_MS || DAY_MS;
+    x.ticks.stepSize = [1, 2, 3, 6, 12].find(h => (max - min) / (h * HOUR_MS) <= (NARROW ? 5 : 10)) * HOUR_MS || DAY_MS;
 }
 // Points from a history response: value(i) returns a number or null (gap).
 function series(h, value, since) {
@@ -541,7 +556,8 @@ function historyChart(id, yTitle, datasets, extraScales = {}) {
                 ...extraScales,
             },
             plugins: {
-                legend: { labels: { color: '#e8edf2', boxWidth: 12 } },
+                legend: { labels: { color: '#e8edf2', boxWidth: NARROW ? 8 : 12,
+                                    font: { size: NARROW ? 10 : 12 } } },
                 tooltip: { callbacks: {
                     title: items => items.length ? new Date(items[0].parsed.x).toLocaleString([], {
                         weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : '',
