@@ -136,6 +136,7 @@
     <path class="wire" d="M300,280 L550,388"/>
     <path class="wire" d="M900,280 L650,388"/>
     <path class="wire" d="M600,478 L600,546"/>
+    <path class="wire" d="M600,128 L600,384"/>
 
     <!-- animated flow overlays (same geometry) -->
     <path id="f-solar"  class="flow" d="M250,118 L250,214"/>
@@ -145,6 +146,7 @@
     <path id="f-solis"  class="flow" d="M300,280 L550,388"/>
     <path id="f-sppro"  class="flow" d="M900,280 L650,388"/>
     <path id="f-load"   class="flow" d="M600,478 L600,546"/>
+    <path id="f-hsolar" class="flow" d="M600,128 L600,384"/>
 
     <!-- flow value labels -->
     <text id="l-solar"  class="wlabel" x="282" y="172">—</text>
@@ -154,6 +156,7 @@
     <text id="l-solis"  class="wlabel" x="408" y="330">—</text>
     <text id="l-sppro"  class="wlabel" x="792" y="330">—</text>
     <text id="l-load"   class="wlabel" x="642" y="518">—</text>
+    <text id="l-hsolar" class="wlabel" x="642" y="262">—</text>
   </svg>
 
   <!-- Nodes -->
@@ -165,6 +168,12 @@
   <div class="node" id="n-gen" style="left:950px; top:80px;">
     <div class="icon ic-gen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"/></svg></div><div class="name">Diesel Generator</div>
     <div class="tag" id="v-gen">22 kVA · idle</div>
+  </div>
+
+  <div class="node" id="n-hsolar" style="left:600px; top:80px;">
+    <div class="icon ic-solar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13l7-6 7 6"/><path d="M4 12v9h10v-9"/><circle cx="19" cy="5" r="2.5"/><path d="M19 0.5v1M19 8.5v1M23.5 5h-1M15.5 5h-1"/></svg></div><div class="name">House Solar <span class="cap">surplus from homes</span></div>
+    <div class="val" id="v-hsolar">— kW</div>
+    <div class="tag">direct to microgrid</div>
   </div>
 
   <div class="node" id="n-solis" style="left:250px; top:250px;">
@@ -409,13 +418,25 @@ async function tick() {
   setFlow('f-sppro', 'l-sppro', spproToBus,
           { invert:false, color: (spproToBus >= 0 ? GRID : POS) });
 
-  // ---- Microgrid bus -> consumption ----
-  // Real consumption = total injected onto the AC bus minus what storage absorbs.
-  // Solis (solisToBus) and SP Pro (spproToBus) both report NET power to the bus
-  // (charging is negative), so the actual load is their sum, clamped at >= 0.
+  // ---- House solar surplus -> microgrid ----
+  // The houses' rooftop solar isn't metered, but the bus has to balance: if the
+  // metered sources (Solis + SP Pro, both NET to the bus, charging negative) sum
+  // to less than zero, e.g. the SP Pro is charging harder than the Solis is
+  // exporting, the difference can only be coming from the houses' surplus.
+  // Only knowable when both inverters are reporting.
   const busInjection = (solisToBus === null && spproToBus === null) ? null
                        : (num(solisToBus) || 0) + (num(spproToBus) || 0);
-  const cons = (busInjection === null) ? null : Math.max(0, busInjection);
+  const houseSolar = (solisToBus === null || spproToBus === null) ? null
+                     : Math.max(0, -busInjection);
+  setOffline('n-hsolar', houseSolar === null);
+  setText('v-hsolar', houseSolar === null ? 'no data' : kW(houseSolar < THRESH ? 0 : houseSolar));
+  setFlow('f-hsolar', 'l-hsolar', houseSolar, { invert:false, color:POS });
+
+  // ---- Microgrid bus -> consumption ----
+  // Real consumption = everything injected onto the AC bus (Solis + SP Pro net,
+  // plus any inferred house-solar surplus), clamped at >= 0.
+  const cons = (busInjection === null) ? null
+               : Math.max(0, busInjection + (houseSolar || 0));
   setOffline('n-grid', cons === null);
   setOffline('n-home', cons === null);
   setText('v-grid', cons === null ? 'no data' : kW(cons));
