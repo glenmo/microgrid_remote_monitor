@@ -9,7 +9,10 @@ dashboard at `monitor.mooramoora.org.au`.
 
 - `https://monitor.mooramoora.org.au/` — simple battery SOC traffic light (public)
 - `https://monitor.mooramoora.org.au/advanced/` — full combined dashboard (public)
-- `http://rubberduck.local:5000/` — full combined dashboard (LAN, primary)
+- `https://monitor.mooramoora.org.au/flow` — live power-flow diagram (public)
+- `https://monitor.mooramoora.org.au/engineer` — engineer view (public)
+- `http://rubberduck.local:5000/` — full combined dashboard (LAN, primary);
+  also `/flow`, `/engineer` and the `/rotate` kiosk page
 - `http://desky.local:8765/` — simple battery SOC traffic light (LAN)
 
 ## What it monitors
@@ -88,8 +91,11 @@ directly (rubberduck) or replaying push payloads from the Pi (VPS).
 | `data_pusher.py` | Runs alongside `app.py` on rubberduck. Every 60 s, fetches the local `/api/*/data` endpoints and POSTs them to the VPS at `/api/push`. |
 | `server/server_app.py` | Flask app for the VPS. Receives pushes from rubberduck, retains 24 h of history in memory, serves the same `combined_v2.html` dashboard publicly. |
 | `simulator.py` | Modbus TCP simulator for offline development. Serves a fake Solis (slave 1) and a fake Eastron (slave 2) on a single port. |
-| `templates/combined_v2.html` | The current dashboard. Two-column SP Pro + Solis layout with Battery 1 / Battery 2 tiles for the Solis BMS, two 24 h charts, per-device staleness handling, watchdog auto-reload. |
-| `server/templates/combined_v2.html` | Symlink to `../../templates/combined_v2.html`. Tracked as a symlink in git — don't replace with a real file. |
+| `templates/combined_v2.html` | The current dashboard. Two-column SP Pro + Solis layout with Battery 1 / Battery 2 tiles for the Solis BMS, Site Totals (incl. inferred house solar), two 24 h charts, per-device staleness handling, watchdog auto-reload. Stacks to one column on narrow screens. |
+| `templates/flow_diagram.html` | `/flow` — animated power-flow diagram (solar, house solar, generator, both inverters and batteries, microgrid bus, consumption). Wide layout for desktop/kiosk, stacked portrait layout for phones. |
+| `templates/engineer.html` | `/engineer` — dense per-inverter readouts, energy ledgers, Solis status/fault registers and 24 h temperature / power-balance / battery I-V charts. |
+| `templates/rotate.html` | `/rotate` (rubberduck only) — kiosk page that cycles full-screen iframes. |
+| `server/templates/{combined_v2,flow_diagram,engineer}.html` | Symlinks to `../../templates/…`. Tracked as symlinks in git — don't replace with real files. |
 | `install.sh` | Pi setup: venv, deps, systemd unit. |
 | `install_pusher.sh` | Pi setup for the `data_pusher.py` service. |
 | `server/install_server.sh` | VPS setup (systemd unit + Apache vhost). |
@@ -184,6 +190,8 @@ SwitchDin (Stormcloud cloud API — optional)
 | Endpoint | Description |
 | --- | --- |
 | `GET /` | Combined dashboard (`combined_v2.html`) |
+| `GET /flow` | Live power-flow diagram (`flow_diagram.html`) |
+| `GET /engineer` | Engineer view (`engineer.html`) |
 | `GET /rotate` | Kiosk page: cycles full-screen between `/flow` (10 s) and noisy's EV status page (`http://192.168.55.6:8090/?theme=dark`, 20 s). Override with `?url=A&secs=10&url=B&secs=20` (one `secs` applies to all). rubberduck's kiosk Chromium (`~/.config/labwc/autostart`) opens this page. |
 | `GET /api/data` | Latest Solis data (legacy alias) |
 | `GET /api/history` | Solis 24 h history (legacy alias) |
@@ -226,6 +234,53 @@ quirks and Flask-JSON caching it has several layers of self-defence:
   until a fresh read replaces them.
 - **Meta-refresh backstop** — `<meta http-equiv="refresh" content="600">`
   hard-reloads every 10 minutes regardless of JS state.
+
+
+### House solar (inferred)
+
+The houses on the microgrid have their own rooftop solar, which isn't
+metered. It shows up only as a shortfall in the bus balance: the Solis
+and SP Pro both report **net** power to the AC bus (charging negative),
+so when their sum goes below zero — typically the SP Pro charging harder
+than the Solis is exporting — the difference can only be house-solar
+surplus flowing directly into the microgrid:
+
+```
+solis_to_bus  = inverter_ac_power            (local Modbus, measured)
+              | pv_total_power − battery_power(s)   (SolisCloud fallback)
+sppro_to_bus  = −battery_w + generator supply (−grid_w when grid_w < −200 W)
+house_solar   = max(0, −(solis_to_bus + sppro_to_bus))
+```
+
+It's computed client-side (no new API keys) and shown as the **House
+Solar** tile on `/flow`, the **House solar now** Site Totals tile on the
+dashboard, and on `/engineer` as a live row plus a "House solar
+(inferred)" series on the 24 h power-balance chart (each SP Pro history
+sample paired with the nearest Solis sample within 2 min). It's blank
+unless both inverters are connected, and values under 50 W read as 0.
+It only captures surplus that reaches the bus — house solar consumed by
+other houses directly is invisible without metering.
+
+### Mobile layouts
+
+- **`/flow`** has two layouts over the same nodes: the original wide one
+  (1200×700 design) and a stacked portrait one (560×840). `fitStage()`
+  picks whichever scales larger for the viewport, so an upright phone
+  gets roughly double the size, while desktops, the kiosk and sideways
+  phones keep the wide layout. Short screens (< 500 px tall) get a
+  compact header and legend.
+- **Dashboard** (`combined_v2.html`) stacks the SP Pro and Solis columns
+  below 900 px; below 600 px the header stacks, each SoC gauge sits
+  above its power-flow card and Site Totals wraps to two per row.
+- **`/engineer`** is one column below 860 px; below 600 px card notes
+  drop to their own line, charts are taller with smaller legends and
+  6-hourly time ticks (chosen at page load).
+- **`/rotate`** just gives each page the full viewport, so `/flow`
+  picks its portrait layout on a phone. noisy's EV page isn't in this
+  repo and is LAN-only.
+
+Headless Chromium won't make a viewport narrower than 500 px, so to
+check a true phone width, load the page in a 390 px-wide `<iframe>`.
 
 
 ## Solis register map (Modbus FC 0x04)
@@ -399,7 +454,8 @@ The dashboard template lives at both `templates/combined_v2.html` and
 `server_app.py` (pignus) look in different folders. To prevent silent
 divergence, `server/templates/combined_v2.html` is now a symlink to
 `../../templates/combined_v2.html` and is tracked as a symlink in git.
-Don't replace it with a real file copy.
+Don't replace it with a real file copy. The same applies to
+`flow_diagram.html` and `engineer.html`.
 
 
 ## Solis reader reliability
