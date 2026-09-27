@@ -95,6 +95,27 @@ main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .chart-wrap { height: 200px; position: relative; }
   .pv-chart-card .chart-wrap { height: 280px; }
+
+/* Narrow screens: stack the two inverter columns, then tighten for phones.
+   min-width: 0 lets grid children (charts, tables) shrink instead of pushing
+   the page wider than the screen. */
+main > *, .top-row > * { min-width: 0; }
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .totals-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 600px) {
+    body { padding: 8px; }
+    header { flex-direction: column; align-items: flex-start; gap: 6px; margin-bottom: 8px; }
+    header h1 { font-size: 18px; }
+    .header-status { flex-wrap: wrap; gap: 8px; }
+    .top-row { grid-template-columns: 1fr; }
+    .soc-gauge { width: 140px; height: 140px; }
+    .totals-grid { grid-template-columns: 1fr 1fr; }
+    .total-tile .val { font-size: 18px; }
+    .chart-wrap { height: 180px; }
+    .pv-chart-card .chart-wrap { height: 220px; }
+}
 </style>
 </head>
 <body>
