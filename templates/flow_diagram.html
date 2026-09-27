@@ -116,6 +116,15 @@
   .lg-gen::before  { color: var(--accent-green); }
   .lg-draw::before { color: var(--accent-orange); }
   .lg-grid::before { color: var(--accent-blue); }
+
+  /* Phones held sideways: reclaim vertical space for the diagram. */
+  @media (max-height: 500px) {
+    header { padding: 4px 8px 0; }
+    header h1 { font-size: 16px; }
+    header .sub { display: none; }
+    #updated { margin-top: 0; }
+    .legend { padding: 2px 8px 4px; }
+  }
 </style>
 </head>
 <body>
@@ -129,14 +138,14 @@
 <div class="stage">
   <svg class="wires" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet">
     <!-- static base wires -->
-    <path class="wire" d="M250,118 L250,214"/>
-    <path class="wire" d="M950,118 L950,214"/>
-    <path class="wire" d="M250,288 L250,332"/>
-    <path class="wire" d="M950,288 L950,332"/>
-    <path class="wire" d="M300,280 L550,388"/>
-    <path class="wire" d="M900,280 L650,388"/>
-    <path class="wire" d="M600,478 L600,546"/>
-    <path class="wire" d="M600,128 L600,384"/>
+    <path id="w-solar" class="wire" d="M250,118 L250,214"/>
+    <path id="w-gen" class="wire" d="M950,118 L950,214"/>
+    <path id="w-sbat" class="wire" d="M250,288 L250,332"/>
+    <path id="w-pbat" class="wire" d="M950,288 L950,332"/>
+    <path id="w-solis" class="wire" d="M300,280 L550,388"/>
+    <path id="w-sppro" class="wire" d="M900,280 L650,388"/>
+    <path id="w-load" class="wire" d="M600,478 L600,546"/>
+    <path id="w-hsolar" class="wire" d="M600,128 L600,384"/>
 
     <!-- animated flow overlays (same geometry) -->
     <path id="f-solar"  class="flow" d="M250,118 L250,214"/>
@@ -222,7 +231,58 @@
 <script>
 const POS = 'var(--accent-green)', NEG = 'var(--accent-orange)', GRID = 'var(--accent-blue)';
 const THRESH = 50; // W — below this we treat as idle
-const DESIGN_W = 1200, DESIGN_H = 700;
+
+// Two layouts over the same nodes/wires. Landscape is the original wide
+// diagram; portrait stacks it into a narrow column so a phone held upright
+// gets roughly twice the scale. fitStage() picks whichever fills the screen
+// better, so there's no user-agent sniffing: a portrait monitor gets the
+// portrait layout too, and a phone turned sideways switches back.
+// nodes: [left, top] (batteries anchor by their top edge); paths: wire and
+// flow geometry; labels: [x, y] of the kW text.
+const LAYOUTS = {
+  landscape: {
+    w: 1200, h: 700,
+    nodes: { solar:[250,80], hsolar:[600,80], gen:[950,80], solis:[250,250], sppro:[950,250],
+             sbat:[250,330], pbat:[950,330], grid:[600,430], home:[600,580] },
+    paths: { solar:'M250,118 L250,214', gen:'M950,118 L950,214', sbat:'M250,288 L250,332',
+             pbat:'M950,288 L950,332', solis:'M300,280 L550,388', sppro:'M900,280 L650,388',
+             load:'M600,478 L600,546', hsolar:'M600,128 L600,384' },
+    labels: { solar:[282,172], gen:[982,172], sbat:[250,316], pbat:[950,316], solis:[408,330],
+              sppro:[792,330], load:[642,518], hsolar:[642,262] },
+  },
+  portrait: {
+    w: 560, h: 840,
+    nodes: { solar:[100,70], hsolar:[280,70], gen:[460,70], solis:[100,240], sppro:[460,240],
+             grid:[280,420], sbat:[100,500], pbat:[460,500], home:[280,620] },
+    paths: { solar:'M100,108 L100,200', gen:'M460,108 L460,200', hsolar:'M280,118 L280,370',
+             solis:'M155,285 L245,372', sppro:'M405,285 L315,372',
+             sbat:'M100,290 L100,502', pbat:'M460,290 L460,502', load:'M280,478 L280,572' },
+    labels: { solar:[132,158], gen:[492,158], hsolar:[322,250], solis:[218,318], sppro:[362,318],
+              sbat:[100,410], pbat:[460,410], load:[322,530] },
+  },
+};
+let layoutName = null;
+
+function applyLayout(name) {
+  if (name === layoutName) return;
+  layoutName = name;
+  const L = LAYOUTS[name];
+  const stage = document.querySelector('.stage');
+  stage.style.width = L.w + 'px'; stage.style.height = L.h + 'px';
+  document.querySelector('svg.wires').setAttribute('viewBox', `0 0 ${L.w} ${L.h}`);
+  for (const [k, [x, y]] of Object.entries(L.nodes)) {
+    const n = document.getElementById('n-' + k);
+    n.style.left = x + 'px'; n.style.top = y + 'px';
+  }
+  for (const [k, d] of Object.entries(L.paths)) {
+    document.getElementById('w-' + k).setAttribute('d', d);
+    document.getElementById('f-' + k).setAttribute('d', d);
+  }
+  for (const [k, [x, y]] of Object.entries(L.labels)) {
+    const t = document.getElementById('l-' + k);
+    t.setAttribute('x', x); t.setAttribute('y', y);
+  }
+}
 
 // Battery icon scale: each bar represents a fixed amount of energy, so a bigger
 // pack literally has more bars. The Solis (~750 kWh over two ports) therefore
@@ -248,7 +308,10 @@ function fitStage() {
   const wrap = document.querySelector('.stage-wrap');
   const stage = document.querySelector('.stage');
   if (!wrap || !stage) return;
-  const s = Math.min(wrap.clientWidth / DESIGN_W, wrap.clientHeight / DESIGN_H);
+  const scale = L => Math.min(wrap.clientWidth / L.w, wrap.clientHeight / L.h);
+  // small bias toward landscape so a near-square window doesn't flip-flop
+  applyLayout(scale(LAYOUTS.portrait) > scale(LAYOUTS.landscape) * 1.1 ? 'portrait' : 'landscape');
+  const s = scale(LAYOUTS[layoutName]);
   stage.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
 }
 
