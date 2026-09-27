@@ -309,7 +309,8 @@ the local production reader on rubberduck.
 
 - **Solis** — read locally over Modbus TCP at 192.168.11.214:502 (slave
   ID 1), polled every 10 s by rubberduck. The Modbus server is the Solis
-  **S2-WL-ST datalogger stick** (S/N 7A124B120CB0700E) plugged into the
+  **S2-WL-ST datalogger stick** (S/N 7A124B120CB0700E, firmware
+  100141D9 type WL — updated 2026-09-27) plugged into the
   inverter's COM port — specifically its **Ethernet port** (MAC
   `ec:c9:ff:97:47:d8`). The same stick uploads the SolisCloud data. If its
   Ethernet cable is unplugged, .214 disappears ("No route to host") and
