@@ -127,6 +127,7 @@ table.grid tr:last-child td { border-bottom: none; }
                 <tr><th>AC-coupled inverters</th><td><span id="sppro-acsolar">—</span><small>W</small></td></tr>
                 <tr><th>DC solar shunt</th><td><span id="sppro-shunt">—</span><small>W</small></td></tr>
                 <tr><th>Solar today</th><td><span id="sppro-solar-today">—</span><small>kWh</small></td></tr>
+                <tr><th>House solar surplus <small>(inferred)</small></th><td><span id="house-solar">—</span><small>W</small></td></tr>
             </table>
         </div>
 
@@ -445,6 +446,30 @@ function renderSolis(d, status) {
     } else { sbody.innerHTML = ''; sempty.style.display = ''; }
 }
 
+// House rooftop solar isn't metered. The Solis and SP Pro report NET power to
+// the microgrid bus (charging negative); if they sum below zero (the SP Pro is
+// charging harder than the Solis exports) the shortfall can only be the houses'
+// surplus. Same inference as the flow page.
+let solHasAcPower = true;   // local Modbus: active_power is the inverter AC output
+function solisToBusW(ac, pv, batt) {
+    return solHasAcPower ? ac : (pv - batt);
+}
+function spproToBusW(battW, genW) {
+    return -battW + (genW < -200 ? -genW : 0);   // grid_w < 0 = generator supplying
+}
+function houseSolarW(solisW, spproW) {
+    if (solisW === null || spproW === null || Number.isNaN(solisW) || Number.isNaN(spproW)) return null;
+    return Math.max(0, -(solisW + spproW));
+}
+function renderHouseSolar(spp, sppStatus, sol, solStatus) {
+    solHasAcPower = sol?.inverter_ac_power !== undefined && sol?.inverter_ac_power !== null;
+    if (!sppStatus?.connected || !solStatus?.connected) { setText('house-solar', '—'); return; }
+    const solisW = solisToBusW(Number(sol.inverter_ac_power), Number(sol.pv_total_power || 0),
+                               Number(sol.battery_power || 0) + Number(sol.battery2_power || 0));
+    const hs = houseSolarW(solisW, spproToBusW(Number(spp.battery_w || 0), Number(spp.grid_w || 0)));
+    setText('house-solar', hs === null ? '—' : fmt(hs < 50 ? 0 : hs, 0));
+}
+
 async function fetchAll() {
     try {
         const [spp, sppStatus, sol, solStatus] = await Promise.all([
@@ -455,6 +480,7 @@ async function fetchAll() {
         ]);
         renderSPPro(spp, sppStatus);
         renderSolis(sol, solStatus);
+        renderHouseSolar(spp, sppStatus, sol, solStatus);
         tickFresh();
     } catch (e) { console.warn(e); }
 }
@@ -548,6 +574,7 @@ const powerChart = historyChart('powerChart', 'kW', [
     line('SP Pro battery', '#3b82f6'),
     line('Generator', '#ef4444'),
     line('Load', '#e8edf2'),
+    line('House solar (inferred)', '#22c55e', [2, 3]),
 ]);
 
 const sppIVChart = ivChart('sppIVChart', [
@@ -591,6 +618,22 @@ async function fetchHistory() {
         powerChart.data.datasets[3].data = series(sppH, col(sppH, 'battery_w', kW), since);
         powerChart.data.datasets[4].data = series(sppH, gen, since);
         powerChart.data.datasets[5].data = series(sppH, col(sppH, 'load_w', kW), since);
+        // House solar at each SP Pro sample, paired with the nearest Solis
+        // sample (both poll ~30 s; skip if they're more than 2 min apart).
+        const solT = solH.t || [];
+        let j = 0;
+        const house = i => {
+            const t = sppH.t[i];
+            if (!solT.length || sppH.battery_w?.[i] == null) return null;
+            while (j + 1 < solT.length && Math.abs(solT[j + 1] - t) <= Math.abs(solT[j] - t)) j++;
+            if (Math.abs(solT[j] - t) > 2 * 60 * 1000) return null;
+            const b = solBatt(j);
+            const solisW = solisToBusW(Number(solH.active_power?.[j]), Number(solH.pv_total_power?.[j] || 0),
+                                       (b || 0) / kW);
+            const hs = houseSolarW(solisW, spproToBusW(Number(sppH.battery_w[i]), Number(sppH.grid_w?.[i] || 0)));
+            return hs === null ? null : hs * kW;
+        };
+        powerChart.data.datasets[6].data = series(sppH, house, since);
         setRange(powerChart, since);
         powerChart.update('none');
 
