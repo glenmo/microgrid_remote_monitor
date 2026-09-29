@@ -29,8 +29,9 @@ dashboard at `monitor.mooramoora.org.au`.
 
 ## Architecture
 
-Three tiers, all running on a single git repo. Each tier polls or serves
-on its own port and the data flows in one direction:
+Three tiers (plus kitty, which feeds the SP Pro into rubberduck), all running
+on a single git repo. Each tier polls or serves on its own port and the data
+flows in one direction:
 
 ```
 ┌──────────────────────────┐         ┌────────────────────────────┐
@@ -43,19 +44,21 @@ on its own port and the data flows in one direction:
 │                          │  push   │  Apache routing:           │
 │  Polls:                  │         │   /          → :8765       │
 │   • Solis  192.168.11.214│         │     (traffic light — see   │
-│   • SP Pro 192.168.11.240│         │      soc_traffic_light)    │
-│      (selpi, TCP 10001)  │         │   /advanced/ → :8100       │
-└──────────────────────────┘         │     (combined_v2.html)     │
-         │                           │   /api/      → :8100       │
-         │ LAN combined dashboard:   │     (pushed data + history)│
-         ▼                           └────────────────────────────┘
-http://rubberduck.local:5000                        ▲
-                                                    │
-                                       Public URLs:
-                                       https://monitor.mooramoora.org.au/
-                                          (simple traffic light)
-                                       https://monitor.mooramoora.org.au/advanced/
-                                          (detailed combined dashboard)
+│  Receives:               │         │      soc_traffic_light)    │
+│   • SP Pro via kitty     │         │   /advanced/ → :8100       │
+│     /api/sppro/ingest    │         │     (combined_v2.html)     │
+└──────────────────────────┘         │   /api/      → :8100       │
+      ▲          │                   │     (pushed data + history)│
+      │ HTTP     │ LAN combined      └────────────────────────────┘
+      │ POST     ▼ dashboard                        ▲
+      │   http://rubberduck.local:5000              │
+      │                                        Public URLs:
+┌─────┴────────────────────┐           https://monitor.mooramoora.org.au/
+│  kitty (Pi at site)      │              (simple traffic light)
+│  kitty/sppro_pusher.py   │           https://monitor.mooramoora.org.au/advanced/
+│  (sppro-pusher.service)  │              (detailed combined dashboard)
+│  SP Pro over USB (selpi) │
+└──────────────────────────┘
 
 ┌──────────────────────────┐
 │  desky.local (LAN)       │
@@ -76,17 +79,26 @@ The same `combined_v2.html` template is served on both rubberduck and the
 VPS — the only difference is whether the Flask backend is polling Modbus
 directly (rubberduck) or replaying push payloads from the Pi (VPS).
 
+The SP Pro is read by **kitty**, a second Pi cabled to the SP Pro's USB
+comms board. `kitty/sppro_pusher.py` runs the selpi reader over serial and
+POSTs each sample to rubberduck's `/api/sppro/ingest`, and rubberduck
+(`--sppro-source push`) serves it like any other reader. See
+`kitty/README.md`. SwitchDin no longer monitors the SP Pro. The SwitchDin
+reader is still in the code but is legacy.
+
 
 ## Components
 
 | File | What it does |
 | --- | --- |
-| `app.py` | Flask app that runs on rubberduck. Polls Solis (Modbus TCP), SP Pro, and optionally SwitchDin Stormcloud. Serves `combined_v2.html` on `:5000`. |
+| `app.py` | Flask app that runs on rubberduck. Polls Solis (Modbus TCP) and receives SP Pro data pushed by kitty. Serves `combined_v2.html` on `:5000`. |
 | `solis_cloud_reader.py` | SolisCloud API reader — fallback Solis source when local Modbus is unavailable (used automatically when `--solis-cloud-*` credentials are given). Cloud data arrives every ~2–5 min with frequent upload gaps; on start it backfills yesterday's and today's samples from the day-history API. |
 | `sppro_reader.py` | SP Pro Modbus TCP reader. Used when the SP Pro Modbus interface is enabled. |
-| `sppro_sx_reader.py` | SP Pro selpi-protocol reader (TCP 10001 with password). Production reader on rubberduck. Wraps the vendored `selpi` library in `vendor/selpi/`. |
+| `sppro_sx_reader.py` | SP Pro selpi-protocol reader. Production reader on kitty (`transport="serial"`, USB). The TCP transport via a serial↔TCP bridge is a legacy fallback. Wraps the vendored `selpi` library in `vendor/selpi/`. |
+| `sppro_push_receiver.py` | `SPProPushReceiver` — serves SP Pro data POSTed to `/api/sppro/ingest` (`--sppro-source push`). Production SP Pro source on rubberduck. |
+| `kitty/` | `sppro_pusher.py` + `sppro-pusher.service` for kitty, the Pi that reads the SP Pro over USB and pushes to rubberduck. See `kitty/README.md`. |
 | `vendor/selpi/` | Vendored Selectronic Sx-protocol library (auth + decode) used by `sppro_sx_reader.py`. Runtime-only copy. |
-| `switchdin_reader.py` | Pulls SP Pro telemetry via SwitchDin's Stormcloud cloud API. Optional — needs username + password. |
+| `switchdin_reader.py` | **Legacy.** Pulled SP Pro telemetry via SwitchDin's Stormcloud cloud API. SwitchDin no longer monitors the SP Pro. |
 | `eastron_reader.py` | Legacy Eastron SDM630MCT energy-meter reader. Retired in current deployment. |
 | `data_pusher.py` | Runs alongside `app.py` on rubberduck. Every 60 s, fetches the local `/api/*/data` endpoints and POSTs them to the VPS at `/api/push`. |
 | `server/server_app.py` | Flask app for the VPS. Receives pushes from rubberduck, retains 24 h of history in memory, serves the same `combined_v2.html` dashboard publicly. |
@@ -110,7 +122,8 @@ bash install.sh
 ```
 
 Edit `/etc/systemd/system/microgrid-monitor.service` to set the inverter
-IPs and any SwitchDin credentials, then:
+IPs and the SP Pro source (`--sppro-source push`, optionally
+`--sppro-ingest-token`), then:
 
 ```
 sudo systemctl daemon-reload
@@ -126,6 +139,15 @@ bash install_pusher.sh
 sudo systemctl edit microgrid-pusher.service   # set MONITOR_API_KEY and --server-url
 sudo systemctl enable --now microgrid-pusher.service
 ```
+
+
+## Quick start — SP Pro reader (kitty)
+
+kitty needs `pyserial` and the SP Pro cabled by USB. Install
+`kitty/sppro-pusher.service` into `/etc/systemd/system/`, check
+`INGEST_URL`, `SPPRO_SERIAL` and `SPPRO_PASSWORD`, then
+`sudo systemctl enable --now sppro-pusher.service`. Full details are in
+`kitty/README.md`.
 
 
 ## Quick start — VPS (pignus)
@@ -166,14 +188,19 @@ given, the cloud is used INSTEAD of Modbus)
 --solis-cloud-id          Inverter ID (optional)
 --solis-cloud-poll        Poll interval (seconds)    (default: 60, min 30)
 
-SP Pro (selpi or Modbus TCP)
---sppro-ip         SP Pro IP                         (default: 192.168.11.240)
---sppro-port       SP Pro selpi TCP port             (default: 10001)
---sppro-password   selpi password (REQUIRED for selpi) (default: none)
---sppro-poll       SP Pro poll interval (seconds)    (default: 10)
+SP Pro
+--sppro-source     auto | sx | modbus | push         (default: auto)
+                   push = serve data POSTed to /api/sppro/ingest by kitty
+                   (production). sx = selpi over a serial<->TCP bridge
+                   (legacy). auto = sx if a password is set, else modbus.
+--sppro-ingest-token  If set, /api/sppro/ingest requires X-Ingest-Token
+--sppro-ip         SP Pro / bridge IP (sx, modbus)   (default: 192.168.11.240)
+--sppro-port       SP Pro / bridge TCP port          (default: 502)
+--sppro-password   selpi password (REQUIRED for sx)  (default: none)
+--sppro-poll       SP Pro poll interval (seconds)    (default: 5)
 --no-sppro         Disable the SP Pro reader
 
-SwitchDin (Stormcloud cloud API — optional)
+SwitchDin (Stormcloud cloud API — LEGACY, SwitchDin no longer monitors the SP Pro)
 --switchdin-user   SwitchDin login email
 --switchdin-pass   SwitchDin password
 --switchdin-uuid   Unit UUID                         (default set in source)
@@ -202,9 +229,10 @@ SwitchDin (Stormcloud cloud API — optional)
 | `GET /api/sppro/data` | Latest SP Pro data |
 | `GET /api/sppro/history` | SP Pro 24 h history |
 | `GET /api/sppro/status` | SP Pro connection status |
-| `GET /api/switchdin/data` | SwitchDin cloud data |
-| `GET /api/switchdin/history` | SwitchDin 24 h history |
-| `GET /api/switchdin/status` | SwitchDin connection status |
+| `POST /api/sppro/ingest` | (rubberduck, push mode) Receive SP Pro samples from kitty — `X-Ingest-Token` if `--sppro-ingest-token` is set |
+| `GET /api/switchdin/data` | (legacy) SwitchDin cloud data |
+| `GET /api/switchdin/history` | (legacy) SwitchDin 24 h history |
+| `GET /api/switchdin/status` | (legacy) SwitchDin connection status |
 | `GET /api/message` | Editable banner text from `message.txt` |
 | `POST /api/push` | (VPS only) Receive Pi pushes — requires `X-API-Key` header |
 
@@ -425,11 +453,11 @@ is plugged in, it will hold the socket exclusively and rubberduck's
 `sppro_sx_reader.py` will fail with `ConnectionRefusedError: [Errno 111]
 Connection refused` even though `ping` to the SP Pro succeeds.
 
-If `curl http://localhost:5000/api/sppro/data` returns `{}`, the first
-thing to check is whether the Droplet (or another reader) is on the LAN.
-Leave the Droplet unplugged, or — if you need its features back — switch
-this app to the SwitchDin Stormcloud cloud API (`switchdin_reader.py`)
-instead of direct selpi.
+This only affects the legacy `sx` (TCP) path. If
+`curl http://localhost:5000/api/sppro/data` returns `{}` in that mode,
+check whether the Droplet (or another reader) is on the LAN and leave it
+unplugged. SwitchDin no longer monitors the SP Pro, and production reads it
+over USB from kitty instead.
 
 ### SP Pro reader exits the whole app on disconnect
 
@@ -505,7 +533,8 @@ reconnect, watchdog, heartbeat) is applied to `sppro_reader.py`.
 - Python 3.9+
 - `flask >= 3.0`
 - `pymodbus >= 3.6`
-- `requests >= 2.31` (for `data_pusher.py` and `switchdin_reader.py`)
+- `requests >= 2.31` (for `data_pusher.py`, `kitty/sppro_pusher.py` and the legacy `switchdin_reader.py`)
+- `pyserial` (kitty only, for the selpi USB transport)
 - Chart.js (loaded from CDN by the dashboard)
 
 
