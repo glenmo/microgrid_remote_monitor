@@ -327,6 +327,14 @@ check a true phone width, load the page in a 390 px-wide `<iframe>`.
 | 33134 | Battery current | S16 | A | ÷10 |
 | 33139 | Battery SoC (BMS 1) | U16 | % | 1 |
 | 33140 | Battery SoH | U16 | % | 1 |
+| 33251–56 | Meter voltage / current, phases A–C | U16 | V ÷10, A ÷100 | |
+| 33257–64 | Meter active power A, B, C, total (− = to loads) | S32 | W | 1 |
+
+The meter registers are the **Eastron SDM630 on the SP Pro load side**, wired to the Solis
+meter port and read by the inverter (served as `meter_*` in `/api/solis/data`; the total
+tracks the SP Pro `load_w`). The meter can't be reached directly as Modbus device 2 through
+the datalogger stick, so keep `--no-eastron`: enabling the old Eastron reader stalls the
+shared connection and the Solis polling with it.
 
 Full map in `app.py` `REGISTER_MAP`. BMS 2 fields (`bms2_battery_soc`,
 `battery2_voltage`, `battery2_current`, `battery2_power`) are polled by

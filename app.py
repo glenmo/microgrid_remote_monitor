@@ -107,6 +107,20 @@ REGISTER_MAP = [
     (33083, 2, "apparent_power",        "S32", "VA",    1,     "Apparent Power"),
     (33094, 1, "grid_frequency",        "U16", "Hz",    100,   "Grid Frequency"),
 
+    # Meter on the Solis meter port: Eastron SDM630 on the SP Pro load side (per-phase loads).
+    # Power is negative when flowing to the loads (sum ~= SP Pro load_w). Read by the
+    # inverter; the meter itself isn't reachable through the datalogger (device 2 doesn't answer).
+    (33251, 1, "meter_voltage_a",       "U16", "V",     10,    "Meter Voltage Phase A"),
+    (33252, 1, "meter_current_a",       "U16", "A",     100,   "Meter Current Phase A"),
+    (33253, 1, "meter_voltage_b",       "U16", "V",     10,    "Meter Voltage Phase B"),
+    (33254, 1, "meter_current_b",       "U16", "A",     100,   "Meter Current Phase B"),
+    (33255, 1, "meter_voltage_c",       "U16", "V",     10,    "Meter Voltage Phase C"),
+    (33256, 1, "meter_current_c",       "U16", "A",     100,   "Meter Current Phase C"),
+    (33257, 2, "meter_power_a",         "S32", "W",     1,     "Meter Active Power Phase A (- = to loads)"),
+    (33259, 2, "meter_power_b",         "S32", "W",     1,     "Meter Active Power Phase B (- = to loads)"),
+    (33261, 2, "meter_power_c",         "S32", "W",     1,     "Meter Active Power Phase C (- = to loads)"),
+    (33263, 2, "meter_power_total",     "S32", "W",     1,     "Meter Total Active Power (- = to loads)"),
+
     # Battery
     (33133, 1, "battery_voltage",       "U16", "V",     10,    "Battery Voltage"),
     (33134, 1, "battery_current",       "S16", "A",     10,    "Battery Current"),
