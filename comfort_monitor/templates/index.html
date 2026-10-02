@@ -200,7 +200,8 @@
   </div>
 
   <div class="chartblock">
-    <h4>Lounge compressor power <span style="color:var(--mute);font-weight:400">(measured by the unit)</span></h4>
+    <h4>Compressor power <span style="color:var(--mute);font-weight:400">(measured by each unit)</span></h4>
+    <div class="legend" id="powerLegend"></div>
     <div class="chart" id="cPower"></div>
   </div>
 
@@ -211,7 +212,7 @@
       <span style="--c:var(--cool)" class="box">Hours cooling</span>
     </div>
     <div class="chart" id="cDaily"></div>
-    <p class="note">Hours are counted while a unit reports it is actively heating or cooling. Only the Lounge unit measures its own energy use; the kWh figures above its bars come from the unit.</p>
+    <p class="note">Hours are counted while a unit reports it is actively heating or cooling. kWh figures above the bars are measured by the units themselves. A unit starts reporting energy once it has done some real heating or cooling.</p>
   </div>
 </section>
 
@@ -374,10 +375,10 @@
           <div class="reading"><div class="v t-out">—</div><div class="k">Outside</div></div>
         </div>
         <div class="chips extra"></div>
-        ${room === "lounge" ? `<div class="power"><div style="display:flex;justify-content:space-between;font-size:14px">
+        <div class="power" hidden><div style="display:flex;justify-content:space-between;font-size:14px">
             <span>Compressor power</span><span class="kw" style="font-variant-numeric:tabular-nums">—</span></div>
             <div class="bar"><span></span></div>
-            <div class="note kwh" style="margin-top:6px"></div></div>` : ""}`;
+            <div class="note kwh" style="margin-top:6px"></div></div>`;
       box.appendChild(card);
     }
   }
@@ -413,7 +414,9 @@
     if (u.managed_by_surplus) chips.push(`<span class="chip sun">☀ Warming with surplus solar</span>`);
     card.querySelector(".extra").innerHTML = chips.join("");
 
-    if (room === "lounge") {
+    const hasPower = u.compressor_kw != null || u.energy_today_kwh != null;
+    card.querySelector(".power").hidden = !hasPower;
+    if (hasPower) {
       const kw = u.compressor_kw;
       card.querySelector(".kw").textContent = kw != null ? `${fmt(kw, 2)} kW` : "—";
       card.querySelector(".bar > span").style.width = kw != null ? `${Math.min(100, kw / 2.5 * 100)}%` : "0";
@@ -607,27 +610,36 @@
 
   function drawPower(h) {
     const host = $("cPower");
-    const rows = (h.rooms.lounge || []).map((r) => [r[0], r[8]]);
-    const max = Math.max(1, ...rows.map((r) => r[1] || 0));
+    const series = Object.keys(ROOMS).map((room) => ({ room, rows: (h.rooms[room] || []).map((r) => [r[0], r[8]]) }))
+                                     .filter((sr) => sr.rows.some((r) => r[1] != null));
+    $("powerLegend").innerHTML = series.map((sr) => `<span style="--c:${ROOM_COLOR[sr.room]}">${ROOMS[sr.room]}</span>`).join("");
+    const max = Math.max(1, ...series.flatMap((sr) => sr.rows.map((r) => r[1] || 0)));
     const top = Math.ceil(max * 2) / 2;
     const ticks = []; for (let v = 0; v <= top + 1e-9; v += top > 2 ? 1 : 0.5) ticks.push(v);
     const f = frame(host, 170, h.start, h.end, 0, top, ticks, (v) => `${v}kW`);
-    if (!rows.some((r) => r[1] != null)) { el("text", { x: W / 2, y: 80, "text-anchor": "middle", fill: "var(--mute)", "font-size": 13 }, f.svg).textContent = "No power readings yet"; return; }
+    if (!series.length) { el("text", { x: W / 2, y: 80, "text-anchor": "middle", fill: "var(--mute)", "font-size": 13 }, f.svg).textContent = "No power readings yet"; return; }
     const gap = h.bucket_s * 3;
-    // Split into continuous segments, then draw each as a filled area plus a line
-    const segs = []; let cur = [], prevT = null;
-    for (const [t, v] of rows) {
-      if (v == null || (prevT !== null && t - prevT > gap)) { if (cur.length) segs.push(cur); cur = []; }
-      if (v != null) { cur.push([t, v]); prevT = t; } else prevT = null;
+    const defs = el("defs", {}, f.svg);
+    for (const sr of series) {
+      // Split into continuous segments, then draw each as a filled area plus a line
+      const segs = []; let cur = [], prevT = null;
+      for (const [t, v] of sr.rows) {
+        if (v == null || (prevT !== null && t - prevT > gap)) { if (cur.length) segs.push(cur); cur = []; }
+        if (v != null) { cur.push([t, v]); prevT = t; } else prevT = null;
+      }
+      if (cur.length) segs.push(cur);
+      defs.innerHTML += `<linearGradient id="pw-${sr.room}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${ROOM_COLOR[sr.room]}" stop-opacity=".35"/><stop offset="1" stop-color="${ROOM_COLOR[sr.room]}" stop-opacity="0"/></linearGradient>`;
+      for (const s of segs) {
+        const pts = s.map(([t, v]) => `${f.x(t).toFixed(1)} ${f.y(v).toFixed(1)}`);
+        el("path", { d: `M${f.x(s[0][0]).toFixed(1)} ${f.y(0)} L${pts.join(" L")} L${f.x(s[s.length - 1][0]).toFixed(1)} ${f.y(0)} Z`, fill: `url(#pw-${sr.room})` }, f.svg);
+        el("path", { d: `M${pts.join(" L")}`, fill: "none", stroke: ROOM_COLOR[sr.room], "stroke-width": 2 }, f.svg);
+      }
     }
-    if (cur.length) segs.push(cur);
-    el("defs", {}, f.svg).innerHTML = `<linearGradient id="pw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fb923c" stop-opacity=".55"/><stop offset="1" stop-color="#fb923c" stop-opacity="0"/></linearGradient>`;
-    for (const s of segs) {
-      const pts = s.map(([t, v]) => `${f.x(t).toFixed(1)} ${f.y(v).toFixed(1)}`);
-      el("path", { d: `M${f.x(s[0][0]).toFixed(1)} ${f.y(0)} L${pts.join(" L")} L${f.x(s[s.length - 1][0]).toFixed(1)} ${f.y(0)} Z`, fill: "url(#pw)" }, f.svg);
-      el("path", { d: `M${pts.join(" L")}`, fill: "none", stroke: "var(--heat)", "stroke-width": 2 }, f.svg);
-    }
-    hover(host, f, h.start, h.end, (t) => { const r = nearest(h.rooms.lounge, t); return r ? { t: r[0], html: `<div>${fmt(r[8], 2)} kW</div>` } : null; });
+    hover(host, f, h.start, h.end, (t) => {
+      let html = "", tt = null;
+      for (const sr of series) { const r = nearest(h.rooms[sr.room], t); if (!r) continue; tt = tt || r[0]; html += `<div style="color:${ROOM_COLOR[sr.room]}">${ROOMS[sr.room]}: ${fmt(r[8], 2)} kW</div>`; }
+      return tt ? { t: tt, html } : null;
+    });
   }
 
   function drawDaily(sum) {
@@ -655,7 +667,7 @@
         el("rect", { x, y: yh, width: bw, height: y(0) - yh, fill: "var(--heat)", rx: 3 }, svg);
         if (d.cool_h > 0) el("rect", { x, y: yc, width: bw, height: yh - yc, fill: "var(--cool)", rx: 3 }, svg);
         el("rect", { x, y: y(0) + 2, width: bw, height: 3, fill: ROOM_COLOR[room] }, svg);
-        if (room === "lounge" && d.kwh != null) el("text", { x: x + bw / 2, y: yc - 5, "text-anchor": "middle", fill: "var(--mute)", "font-size": 10 }, svg).textContent = `${fmt(d.kwh, 1)}kWh`;
+        if (d.kwh != null) el("text", { x: x + bw / 2, y: yc - 5, "text-anchor": "middle", fill: "var(--mute)", "font-size": 10 }, svg).textContent = `${fmt(d.kwh, 1)}kWh`;
         const tip = el("title", {}, svg.lastChild);
         tip.textContent = `${ROOMS[room]} ${day}: ${fmt(d.heat_h, 1)} h heating, ${fmt(d.cool_h, 1)} h cooling`;
       });

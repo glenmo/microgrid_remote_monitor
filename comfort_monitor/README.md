@@ -30,8 +30,11 @@ ever arrives.
 | `GET /api/summary?days=7` | Per local day: hours heating/cooling, Lounge kWh, inside min/max. |
 | `GET /healthz` | Liveness plus age of the last push. |
 
-"Contribution" is measured in hours of active heating or cooling (`hvac_action`). Only the
-Lounge unit reports energy (compressor kW and kWh today), so kWh is shown for it alone.
+"Contribution" is measured in hours of active heating or cooling (`hvac_action`), plus
+compressor kW and kWh for every unit that reports energy. Home Assistant only creates a Daikin
+unit's energy sensors once that unit has recorded some usage (home-assistant/core#77877), so a
+unit's power data appears on the page after its first real heating or cooling. LodgyBox
+reloads such units nightly.
 
 ## Run locally
 
