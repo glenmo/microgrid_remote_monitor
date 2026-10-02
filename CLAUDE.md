@@ -27,7 +27,7 @@ Deployment happens by `git pull --ff-only` + `sudo systemctl restart <unit>` ove
 | --- | --- | --- |
 | `rubberduck` (site Pi) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`app.py`), `microgrid-pusher.service` |
 | `kitty` (SP Pro USB Pi) | `~/microgrid_remote_monitor` | `sppro-pusher.service` |
-| `pignus` (VPS, `pignus.arachnoid.net.au`) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`server/server_app.py`) |
+| `pignus` (VPS, `pignus.arachnoid.net.au`) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`server/server_app.py`), `comfort-monitor.service` (`comfort_monitor/app.py`, :8120, `/comfort/`) |
 
 Template or API-shape changes must go to rubberduck and pignus together. pignus runs fail2ban, so batch remote commands into as few SSH connections as you can, and stop after a failed connection rather than retrying.
 
@@ -56,4 +56,5 @@ Data flows one way: **devices → readers (rubberduck `app.py`) → dashboard + 
 - Reader resilience rules (reconnect on `isError()`, batched Modbus reads with ~300 ms gaps, staleness watchdog, 30 s heartbeat log) are documented in README "Solis reader reliability". Keep them in place when you edit readers.
 - selpi's "Attempted to start multiple logins" error means *the SP Pro returned no data*, not a password or session clash. The Lantronix bridge and selpi port 10001 each accept only one TCP client at a time.
 - `message.txt` is the editable banner served by `/api/message` (separate copies for rubberduck and the server).
+- `comfort_monitor/` is the public lodge aircon dashboard (`/comfort/`). It's a self-contained Flask app with SQLite, fed by pushes from LodgyBox (Home Assistant, repo `glenmo/lodge_home_assistant`). It must only ever publish the rooms in `PUBLIC_ROOMS`; the Caretaker's Flat is excluded for privacy. See its README.
 - Unrelated side projects live in `sigenergy_monitor/` (home Sigenergy system) and `tracker_analysis/` (bifacial tracker study). Each is a self-contained Flask app with its own README, requirements and install script. `combined_app.py`, `templates/dashboard.html`/`combined_dashboard.html` and `server_combined_dashboard.html` (still served at VPS `/combined/`) are legacy. The Eastron meter is retired in the current deployment, but `app.py` still imports `EastronModbusReader` from `eastron_reader.py`, so don't delete it.

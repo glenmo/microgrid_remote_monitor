@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lodge Comfort</title>
+<meta name="description" content="Live aircon comfort and solar-surplus heating at the Moora Moora lodge.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg:#0e1116; --card:#171b22; --card2:#1f2530; --fg:#eef1f5; --mute:#8b95a5; --line:#2a313c;
+    --green:#22c55e; --orange:#f59e0b; --red:#ef4444; --blue:#60a5fa; --sun:#fbbf24;
+    --heat:#fb923c; --cool:#60a5fa; --fan:#94a3b8; --dry:#2dd4bf;
+    --lounge:#a78bfa; --dining:#f472b6; --outside:#8b95a5;
+  }
+  * { box-sizing:border-box; margin:0; }
+  html { background:var(--bg); }
+  body { background:var(--bg); color:var(--fg); font-family:system-ui, sans-serif; line-height:1.45;
+         max-width:1200px; margin:0 auto; padding:16px; }
+  a { color:var(--blue); }
+  header { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:space-between;
+           padding-bottom:12px; border-bottom:1px solid var(--line); margin-bottom:16px; }
+  header h1 { font-size:26px; font-weight:600; letter-spacing:.2px; }
+  header h1 small { display:block; font-size:14px; font-weight:400; color:var(--mute); }
+  .live { display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--mute);
+          background:var(--card); border:1px solid var(--line); border-radius:999px; padding:6px 12px; }
+  .live i { width:9px; height:9px; border-radius:50%; background:var(--mute); }
+  .live.ok i { background:var(--green); box-shadow:0 0 0 0 rgba(34,197,94,.6); animation:pulse 2s infinite; }
+  .live.stale i { background:var(--orange); }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,.55)} 70%{box-shadow:0 0 0 9px rgba(34,197,94,0)} 100%{box-shadow:0 0 0 0 rgba(34,197,94,0)} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
+  .card h2 { font-size:15px; font-weight:500; color:var(--mute); letter-spacing:.3px; text-transform:uppercase; margin-bottom:12px; }
+  section { margin-bottom:16px; }
+
+  /* Surplus hero */
+  .hero { display:grid; grid-template-columns:150px 1fr; gap:20px; align-items:center; }
+  .hero h3 { font-size:24px; font-weight:600; }
+  .hero p { color:var(--mute); margin-top:4px; }
+  .gauges { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-top:16px; }
+  .gauge { background:var(--card2); border-radius:12px; padding:10px; text-align:center; }
+  .gauge svg { width:100%; max-width:110px; height:auto; display:block; margin:0 auto; }
+  .gauge .lbl { font-size:13px; color:var(--mute); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .chip { font-size:13px; padding:3px 10px; border-radius:999px; background:var(--card2); border:1px solid var(--line); color:var(--fg); white-space:nowrap; }
+  .chip.sun { border-color:rgba(251,191,36,.5); color:var(--sun); }
+  .chip.heat { border-color:rgba(251,146,60,.5); color:var(--heat); }
+  .chip.cool { border-color:rgba(96,165,250,.5); color:var(--cool); }
+  .chip.warn { border-color:rgba(239,68,68,.5); color:#f87171; }
+  .sun-rays { transform-origin:75px 75px; }
+  .active .sun-rays { animation:spin 24s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* Unit cards */
+  .units { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; }
+  .unit h2 { display:flex; justify-content:space-between; align-items:center; }
+  .unit h2 b { color:var(--fg); font-size:18px; text-transform:none; letter-spacing:0; font-weight:600; }
+  .unit .art { width:100%; height:auto; display:block; }
+  .flow path { fill:none; stroke-width:3; stroke-linecap:round; stroke-dasharray:6 10; opacity:.9; }
+  .running .flow path { animation:flow 1.4s linear infinite; }
+  @keyframes flow { to { stroke-dashoffset:-32; } }
+  .fanblade { transform-box:fill-box; transform-origin:center; }
+  .running .fanblade { animation:spin var(--fanspeed, 1.2s) linear infinite; }
+  .readings { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; margin-top:12px; }
+  .reading { background:var(--card2); border-radius:12px; padding:10px 12px; }
+  .reading .v { font-size:28px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .reading .v small { font-size:15px; color:var(--mute); font-weight:400; }
+  .reading .k { font-size:13px; color:var(--mute); }
+  .power { margin-top:10px; background:var(--card2); border-radius:12px; padding:10px 12px; }
+  .bar { height:10px; border-radius:999px; background:var(--line); overflow:hidden; margin-top:6px; }
+  .bar > span { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--sun), var(--heat)); transition:width .8s; }
+  .note { font-size:13px; color:var(--mute); margin-top:8px; }
+
+  /* Charts */
+  .tabs { display:flex; gap:6px; }
+  .tabs button { font:inherit; font-size:14px; color:var(--mute); background:var(--card2); border:1px solid var(--line);
+                 border-radius:999px; padding:4px 12px; cursor:pointer; }
+  .tabs button[aria-pressed="true"] { color:var(--fg); border-color:var(--mute); }
+  .charthead { display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .legend { display:flex; flex-wrap:wrap; gap:12px; font-size:13px; color:var(--mute); }
+  .legend span::before { content:""; display:inline-block; width:14px; height:3px; border-radius:2px; vertical-align:middle;
+                         margin-right:6px; background:var(--c); }
+  .legend span.dash::before { background:repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+  .legend span.box::before { height:10px; width:10px; }
+  .chart { position:relative; }
+  .chart svg { width:100%; height:auto; display:block; overflow:visible; }
+  .chart .axis text { fill:var(--mute); font-size:11px; }
+  .chart .grid line { stroke:var(--line); }
+  .tip { position:absolute; pointer-events:none; background:#0b0e12; border:1px solid var(--line); border-radius:8px;
+         padding:6px 9px; font-size:12px; white-space:nowrap; transform:translate(-50%, -110%); display:none; z-index:2; }
+  .tip b { display:block; color:var(--mute); font-weight:500; margin-bottom:2px; }
+  .empty { color:var(--mute); font-size:14px; padding:24px 0; text-align:center; }
+  .chartblock + .chartblock { margin-top:18px; }
+  .chartblock h4 { font-size:14px; font-weight:500; margin-bottom:4px; }
+
+  /* Explainer */
+  .steps { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin:6px 0 16px; }
+  .step { background:var(--card2); border-radius:12px; padding:12px; text-align:center; position:relative; }
+  .step svg { width:64px; height:64px; display:block; margin:0 auto 6px; }
+  .step b { display:block; }
+  .step p { font-size:13px; color:var(--mute); }
+  .step:not(:last-child)::after { content:"→"; position:absolute; right:-11px; top:38px; color:var(--mute); font-size:18px; }
+  .rule { display:grid; gap:6px; }
+  .cond { display:flex; gap:10px; align-items:center; background:var(--card2); border-radius:10px; padding:8px 12px; font-size:15px; }
+  .cond .tick { width:22px; height:22px; border-radius:50%; flex:none; display:grid; place-items:center; font-size:13px;
+                background:var(--line); color:var(--mute); }
+  .cond.yes .tick { background:rgba(34,197,94,.18); color:var(--green); }
+  .cond.no .tick { background:rgba(239,68,68,.14); color:#f87171; }
+  .cond .val { margin-left:auto; color:var(--mute); font-variant-numeric:tabular-nums; }
+  .or { font-size:12px; color:var(--mute); text-transform:uppercase; letter-spacing:.5px; padding-left:44px; }
+  .explain-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .faq h4 { font-size:15px; margin-top:12px; }
+  .faq p { color:var(--mute); font-size:14px; margin-top:2px; }
+  footer { color:var(--mute); font-size:13px; text-align:center; padding:12px 0 24px; }
+
+  @media (max-width: 760px) {
+    body { padding:16px; }
+    .hero { grid-template-columns:90px 1fr; }
+    .gauges { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .steps { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .step:not(:last-child)::after { display:none; }
+    .explain-grid { grid-template-columns:1fr; }
+    .reading .v { font-size:24px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation:none !important; transition:none !important; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lodge Comfort <small>Moora Moora lodge · aircons &amp; solar-surplus heating</small></h1>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span class="live" id="live"><i></i><span id="liveText">Connecting…</span></span>
+    <a href="/" class="chip" style="text-decoration:none">← Microgrid monitor</a>
+  </div>
+</header>
+
+<!-- Solar surplus -->
+<section class="card" id="surplusCard">
+  <h2>Solar surplus</h2>
+  <div class="hero">
+    <svg viewBox="0 0 150 150" aria-hidden="true" id="sunArt">
+      <g class="sun-rays" stroke="var(--sun)" stroke-width="6" stroke-linecap="round" opacity=".85">
+        <line x1="75" y1="8" x2="75" y2="26"/><line x1="75" y1="124" x2="75" y2="142"/>
+        <line x1="8" y1="75" x2="26" y2="75"/><line x1="124" y1="75" x2="142" y2="75"/>
+        <line x1="27.6" y1="27.6" x2="40.3" y2="40.3"/><line x1="109.7" y1="109.7" x2="122.4" y2="122.4"/>
+        <line x1="27.6" y1="122.4" x2="40.3" y2="109.7"/><line x1="109.7" y1="40.3" x2="122.4" y2="27.6"/>
+      </g>
+      <circle cx="75" cy="75" r="34" fill="var(--sun)" id="sunDisc"/>
+      <g id="sunCloud" opacity="0">
+        <ellipse cx="88" cy="96" rx="40" ry="20" fill="#3b4452"/><ellipse cx="66" cy="88" rx="24" ry="20" fill="#3b4452"/>
+      </g>
+    </svg>
+    <div>
+      <h3 id="surplusTitle">—</h3>
+      <p id="surplusText">Waiting for data from the lodge.</p>
+      <div class="chips" id="surplusChips"></div>
+    </div>
+  </div>
+  <div class="gauges">
+    <div class="gauge"><svg viewBox="0 0 120 120" id="gSolis"></svg><div class="lbl">Solis battery</div></div>
+    <div class="gauge"><svg viewBox="0 0 120 120" id="gSppro"></svg><div class="lbl">SP Pro battery</div></div>
+    <div class="gauge"><svg viewBox="0 0 120 120" id="gFreq"></svg><div class="lbl">Microgrid frequency</div></div>
+    <div class="gauge"><svg viewBox="0 0 120 120" id="gGen"></svg><div class="lbl">Generator</div></div>
+  </div>
+</section>
+
+<!-- Units -->
+<section class="units" id="units"></section>
+
+<!-- History -->
+<section class="card">
+  <div class="charthead">
+    <h2 style="margin:0">History</h2>
+    <div class="tabs" role="group" aria-label="Time range">
+      <button data-h="24" aria-pressed="true">24 hours</button>
+      <button data-h="168" aria-pressed="false">7 days</button>
+      <button data-h="720" aria-pressed="false">30 days</button>
+    </div>
+  </div>
+
+  <div class="chartblock">
+    <h4>Temperature</h4>
+    <div class="legend">
+      <span style="--c:var(--lounge)">Lounge inside</span>
+      <span style="--c:var(--dining)">Dining Room inside</span>
+      <span style="--c:var(--outside)" class="dash">Outside</span>
+    </div>
+    <div class="chart" id="cTemp"></div>
+  </div>
+
+  <div class="chartblock">
+    <h4>Heating &amp; cooling activity</h4>
+    <div class="legend">
+      <span style="--c:var(--heat)" class="box">Heating</span>
+      <span style="--c:var(--cool)" class="box">Cooling</span>
+      <span style="--c:var(--sun)" class="box">Solar surplus available</span>
+    </div>
+    <div class="chart" id="cActivity"></div>
+  </div>
+
+  <div class="chartblock">
+    <h4>Lounge compressor power <span style="color:var(--mute);font-weight:400">(measured by the unit)</span></h4>
+    <div class="chart" id="cPower"></div>
+  </div>
+
+  <div class="chartblock">
+    <h4>Daily contribution, last 7 days</h4>
+    <div class="legend">
+      <span style="--c:var(--heat)" class="box">Hours heating</span>
+      <span style="--c:var(--cool)" class="box">Hours cooling</span>
+    </div>
+    <div class="chart" id="cDaily"></div>
+    <p class="note">Hours are counted while a unit reports it is actively heating or cooling. Only the Lounge unit measures its own energy use; the kWh figures above its bars come from the unit.</p>
+  </div>
+</section>
+
+<!-- Explainer -->
+<section class="card" id="how">
+  <h2>How solar-surplus heating works</h2>
+  <div class="steps">
+    <div class="step">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="12" fill="var(--sun)"/><g stroke="var(--sun)" stroke-width="4" stroke-linecap="round"><line x1="32" y1="4" x2="32" y2="12"/><line x1="32" y1="52" x2="32" y2="60"/><line x1="4" y1="32" x2="12" y2="32"/><line x1="52" y1="32" x2="60" y2="32"/><line x1="12" y1="12" x2="18" y2="18"/><line x1="46" y1="46" x2="52" y2="52"/><line x1="12" y1="52" x2="18" y2="46"/><line x1="46" y1="18" x2="52" y2="12"/></g></svg>
+      <b>Sun fills the batteries</b><p>Solar panels charge the Solis and SP Pro battery banks.</p>
+    </div>
+    <div class="step">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="14" y="10" width="36" height="48" rx="6" fill="none" stroke="var(--green)" stroke-width="4"/><rect x="24" y="4" width="16" height="7" rx="2" fill="var(--green)"/><rect x="20" y="16" width="24" height="36" rx="3" fill="var(--green)"/></svg>
+      <b>Batteries are full</b><p>Once storage is full, extra sunshine would otherwise be wasted.</p>
+    </div>
+    <div class="step">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="8" width="48" height="48" rx="10" fill="none" stroke="var(--blue)" stroke-width="4"/><path d="M19 33l9 9 17-19" fill="none" stroke="var(--blue)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <b>Home Assistant checks</b><p>The lodge's controller checks the rule below every 30 seconds.</p>
+    </div>
+    <div class="step">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="6" y="14" width="52" height="20" rx="6" fill="#e5e7eb"/><rect x="10" y="28" width="44" height="3" rx="1.5" fill="#9ca3af"/><g stroke="var(--heat)" stroke-width="3.5" fill="none" stroke-linecap="round"><path d="M18 40c3 4-3 8 0 12"/><path d="M32 40c3 4-3 8 0 12"/><path d="M46 40c3 4-3 8 0 12"/></g></svg>
+      <b>Rooms are warmed</b><p>The Lounge and Dining Room aircons store that energy as warmth.</p>
+    </div>
+  </div>
+
+  <div class="explain-grid">
+    <div>
+      <h4 style="font-size:15px;margin-bottom:8px">The rule, right now</h4>
+      <div class="rule" id="rule">
+        <div class="cond" data-k="soc"><span class="tick">?</span>Both batteries above 95 %<span class="val"></span></div>
+        <div class="or">or</div>
+        <div class="cond" data-k="freq"><span class="tick">?</span>Microgrid frequency above 50.2 Hz<span class="val"></span></div>
+        <div class="or">and</div>
+        <div class="cond" data-k="gen"><span class="tick">?</span>Generator is not running<span class="val"></span></div>
+        <div class="or">and</div>
+        <div class="cond" data-k="enabled"><span class="tick">?</span>Surplus heating is switched on<span class="val"></span></div>
+      </div>
+      <p class="note">The rule has to hold for 5 minutes before heating starts, and heating stops 10 minutes after it no longer holds, so passing clouds don't make the aircons cycle on and off.</p>
+    </div>
+    <div class="faq">
+      <h4 style="margin-top:0">Why the frequency?</h4>
+      <p>When the SP Pro's batteries are full it nudges the microgrid's AC frequency up from 50 Hz. Solar inverters see that and throttle back. A frequency above 50.2 Hz is a clear sign that sunshine is being turned away, so it's a good moment to use it.</p>
+      <h4>What does it switch on?</h4>
+      <p>Only units that are switched off, set to heat at <span id="setpointTxt">the chosen</span> °C. If someone is already using an aircon, it is left alone.</p>
+      <h4>What happens when the surplus ends?</h4>
+      <p>Ten minutes later, the automation turns off the units it switched on. If anyone changed one of those units in the meantime, it's treated as theirs and left running.</p>
+      <h4>Why not the generator?</h4>
+      <p>Energy from the generator is never "spare", so surplus heating never runs while the generator is on.</p>
+      <h4>What isn't shown?</h4>
+      <p>The Caretaker's Flat has its own aircon, but it's someone's home, so it isn't published here and isn't part of the automation.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Data from the lodge's Home Assistant, updated every minute · battery &amp; frequency from the <a href="/">Wombat Hollow Microgrid monitor</a>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  const ROOM_LIST = {{ room_list | tojson }};  // ordered [key, label] pairs
+  const ROOMS = Object.fromEntries(ROOM_LIST);
+  const ROOM_COLOR = { lounge: "var(--lounge)", dining_room: "var(--dining)" };
+  const ACTION = {
+    heating: { label: "Heating", color: "var(--heat)", cls: "heat" },
+    cooling: { label: "Cooling", color: "var(--cool)", cls: "cool" },
+    fan:     { label: "Fan",     color: "var(--fan)",  cls: "" },
+    drying:  { label: "Drying",  color: "var(--dry)",  cls: "" },
+    idle:    { label: "Idle",    color: "var(--mute)", cls: "" },
+    off:     { label: "Off",     color: "var(--mute)", cls: "" },
+  };
+  const MODE = { heat: "Heat", cool: "Cool", heat_cool: "Auto", dry: "Dry", fan_only: "Fan only", off: "Off" };
+  const FAN_SPEED = { Quiet: "2.4s", "1": "2s", "2": "1.6s", "3": "1.2s", "4": "0.9s", "5": "0.6s", Auto: "1.2s" };
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+  const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v)) ? "—" : Number(v).toFixed(d);
+  let current = null;
+
+  function el(tag, attrs, parent) {
+    const n = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  /* ---------------- gauges ---------------- */
+  function ring(svg, value, max, color, text, sub, threshold) {
+    svg.innerHTML = "";
+    const r = 46, c = 2 * Math.PI * r, start = 0.125;
+    const arc = (frac, stroke, width) => el("circle", {
+      cx: 60, cy: 60, r, fill: "none", stroke, "stroke-width": width, "stroke-linecap": "round",
+      "stroke-dasharray": `${c * 0.75 * frac} ${c}`, transform: `rotate(${90 + start * 360} 60 60)` }, svg);
+    arc(1, "var(--line)", 10);
+    if (value !== null && value !== undefined) arc(Math.max(0, Math.min(1, value / max)), color, 10);
+    if (threshold) {
+      const a = (90 + start * 360 + 270 * threshold) * Math.PI / 180;
+      el("line", { x1: 60 + 38 * Math.cos(a), y1: 60 + 38 * Math.sin(a), x2: 60 + 55 * Math.cos(a), y2: 60 + 55 * Math.sin(a),
+                   stroke: "var(--fg)", "stroke-width": 2.5, "stroke-linecap": "round" }, svg);
+    }
+    const t = el("text", { x: 60, y: 62, "text-anchor": "middle", fill: "var(--fg)", "font-size": 22, "font-weight": 600 }, svg);
+    t.textContent = text;
+    const s = el("text", { x: 60, y: 82, "text-anchor": "middle", fill: "var(--mute)", "font-size": 11 }, svg);
+    s.textContent = sub;
+  }
+
+  function genIcon(svg, running) {
+    svg.innerHTML = "";
+    const col = running ? "var(--red)" : running === false ? "var(--green)" : "var(--mute)";
+    el("rect", { x: 22, y: 38, width: 76, height: 44, rx: 8, fill: "none", stroke: col, "stroke-width": 5 }, svg);
+    el("rect", { x: 34, y: 28, width: 18, height: 12, rx: 3, fill: col }, svg);
+    el("path", { d: "M64 46 L52 64 H62 L56 78 L72 58 H62 Z", fill: col }, svg);
+    const t = el("text", { x: 60, y: 104, "text-anchor": "middle", fill: col, "font-size": 15, "font-weight": 600 }, svg);
+    t.textContent = running ? "Running" : running === false ? "Off" : "—";
+  }
+
+  /* ---------------- unit cards ---------------- */
+  function unitArt(room) {
+    return `
+      <svg class="art" viewBox="0 0 320 150" aria-hidden="true">
+        <rect x="20" y="10" width="280" height="62" rx="14" fill="#e8ebf0"/>
+        <rect x="20" y="10" width="280" height="62" rx="14" fill="url(#sheen-${room})"/>
+        <defs><linearGradient id="sheen-${room}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+        <rect x="34" y="56" width="252" height="8" rx="4" fill="#a3aab5"/>
+        <g class="louvre"><rect x="40" y="62" width="240" height="6" rx="3" fill="#cfd4dc"/></g>
+        <circle class="led" cx="270" cy="26" r="5" fill="#9ca3af"/>
+        <g transform="translate(46 22)"><circle r="13" cx="13" cy="13" fill="#d7dbe2"/>
+          <g class="fanblade"><path d="M13 13 L13 2 A11 11 0 0 1 22 9 Z M13 13 L24 15 A11 11 0 0 1 17 23 Z M13 13 L7 23 A11 11 0 0 1 2 12 Z" fill="#8a93a0"/></g></g>
+        <text class="disp" x="160" y="40" text-anchor="middle" font-size="20" font-weight="700" fill="#4b5563" font-family="system-ui">--</text>
+        <g class="flow"></g>
+        <text class="rest" x="160" y="118" text-anchor="middle" font-size="14" fill="var(--mute)" font-family="system-ui">Resting</text>
+      </svg>`;
+  }
+
+  function flowPaths(g, color, swing) {
+    g.innerHTML = "";
+    const n = 6;
+    for (let i = 0; i < n; i++) {
+      const x = 60 + i * 40;
+      const tilt = (swing === "Horizontal" || swing === "3D") ? (i - (n - 1) / 2) * 6 : 0;
+      el("path", { d: `M${x} 78 q ${8 + tilt / 2} 16 ${tilt} 32 q ${-8 + tilt / 2} 16 ${tilt} 32`, stroke: color,
+                   style: `animation-delay:${-i * 0.2}s` }, g);
+    }
+  }
+
+  function buildUnits() {
+    const box = $("units");
+    box.innerHTML = "";
+    for (const room in ROOMS) {
+      const card = document.createElement("article");
+      card.className = "card unit";
+      card.id = "unit-" + room;
+      card.innerHTML = `
+        <h2><b>${ROOMS[room]}</b><span class="chip state">—</span></h2>
+        ${unitArt(room)}
+        <div class="readings">
+          <div class="reading"><div class="v t-in">—</div><div class="k">Inside</div></div>
+          <div class="reading"><div class="v t-set">—</div><div class="k">Set to</div></div>
+          <div class="reading"><div class="v t-out">—</div><div class="k">Outside</div></div>
+        </div>
+        <div class="chips extra"></div>
+        ${room === "lounge" ? `<div class="power"><div style="display:flex;justify-content:space-between;font-size:14px">
+            <span>Compressor power</span><span class="kw" style="font-variant-numeric:tabular-nums">—</span></div>
+            <div class="bar"><span></span></div>
+            <div class="note kwh" style="margin-top:6px"></div></div>` : ""}`;
+      box.appendChild(card);
+    }
+  }
+
+  function renderUnit(room, u) {
+    const card = $("unit-" + room);
+    if (!card) return;
+    if (!u) { card.querySelector(".state").textContent = "No data"; return; }
+    const action = u.hvac_action || (u.hvac_mode === "off" ? "off" : "idle");
+    const a = ACTION[action] || ACTION.idle;
+    const running = u.hvac_mode && u.hvac_mode !== "off";
+    const state = card.querySelector(".state");
+    state.textContent = u.available === false ? "Unavailable" : running ? `${MODE[u.hvac_mode] || u.hvac_mode} · ${a.label}` : "Off";
+    state.className = "chip state " + (running ? a.cls : "");
+    card.classList.toggle("running", !!running);
+    card.style.setProperty("--fanspeed", FAN_SPEED[u.fan_mode] || "1.2s");
+    const svg = card.querySelector(".art");
+    svg.querySelector(".led").setAttribute("fill", running ? a.color : "#9ca3af");
+    svg.querySelector(".disp").textContent = running && u.target_temp != null ? `${fmt(u.target_temp, 0)}°` : "--";
+    svg.querySelector(".louvre").setAttribute("transform", running ? "translate(0 5)" : "");
+    svg.querySelector(".rest").setAttribute("opacity", running ? 0 : 1);
+    const flow = svg.querySelector(".flow");
+    if (running && action !== "idle") flowPaths(flow, a.color, u.swing_mode); else flow.innerHTML = "";
+
+    card.querySelector(".t-in").innerHTML = u.inside_temp != null ? `${fmt(u.inside_temp)}<small>°C</small>` : "—";
+    card.querySelector(".t-set").innerHTML = running && u.target_temp != null ? `${fmt(u.target_temp, 0)}<small>°C</small>` : "<small>off</small>";
+    card.querySelector(".t-out").innerHTML = u.outside_temp != null ? `${fmt(u.outside_temp)}<small>°C</small>` : "—";
+
+    const chips = [];
+    if (u.humidity != null) chips.push(`<span class="chip">💧 ${fmt(u.humidity, 0)} % humidity</span>`);
+    if (u.fan_mode) chips.push(`<span class="chip">Fan ${u.fan_mode}</span>`);
+    if (u.swing_mode) chips.push(`<span class="chip">Swing ${u.swing_mode.toLowerCase()}</span>`);
+    if (u.managed_by_surplus) chips.push(`<span class="chip sun">☀ Warming with surplus solar</span>`);
+    card.querySelector(".extra").innerHTML = chips.join("");
+
+    if (room === "lounge") {
+      const kw = u.compressor_kw;
+      card.querySelector(".kw").textContent = kw != null ? `${fmt(kw, 2)} kW` : "—";
+      card.querySelector(".bar > span").style.width = kw != null ? `${Math.min(100, kw / 2.5 * 100)}%` : "0";
+      const parts = [];
+      if (u.energy_today_kwh != null) parts.push(`${fmt(u.energy_today_kwh, 1)} kWh used today`);
+      if (u.heat_kwh_last_hour != null) parts.push(`${fmt(u.heat_kwh_last_hour, 2)} kWh heating in the last hour`);
+      if (u.cool_kwh_last_hour != null && u.cool_kwh_last_hour > 0) parts.push(`${fmt(u.cool_kwh_last_hour, 2)} kWh cooling`);
+      card.querySelector(".kwh").textContent = parts.join(" · ");
+    }
+  }
+
+  /* ---------------- surplus + rule ---------------- */
+  function renderSurplus(s) {
+    const card = $("surplusCard");
+    const active = s.active === true;
+    card.classList.toggle("active", active);
+    $("sunCloud").setAttribute("opacity", active ? 0 : 0.95);
+    $("sunDisc").setAttribute("opacity", active ? 1 : 0.55);
+    $("surplusTitle").textContent = active ? "Surplus sunshine — warming the lodge" : s.active === false ? "No surplus right now" : "Surplus status unknown";
+    const rooms = Object.entries(s.rooms_enabled || {}).filter(([, v]) => v).map(([k]) => ROOMS[k]).filter(Boolean);
+    $("surplusText").textContent = active
+      ? `Spare solar energy is heating the ${rooms.join(" and ") || "selected rooms"}.`
+      : s.generator_running ? "The generator is running, so there's no spare solar to use."
+      : "Batteries are still charging, so the sunshine is being stored for later.";
+    const chips = [];
+    if (s.heating_enabled === false) chips.push(`<span class="chip warn">Surplus heating switched off</span>`);
+    else if (s.heating_enabled) chips.push(`<span class="chip sun">Surplus heating on</span>`);
+    if (s.setpoint != null) chips.push(`<span class="chip">Setpoint ${fmt(s.setpoint, 0)} °C</span>`);
+    if (rooms.length) chips.push(`<span class="chip">Rooms: ${rooms.join(", ")}</span>`);
+    $("surplusChips").innerHTML = chips.join("");
+    $("setpointTxt").textContent = s.setpoint != null ? fmt(s.setpoint, 0) : "the chosen";
+
+    ring($("gSolis"), s.solis_soc, 100, s.solis_soc > 95 ? "var(--green)" : s.solis_soc >= 40 ? "var(--orange)" : "var(--red)", s.solis_soc != null ? `${fmt(s.solis_soc, 0)}%` : "—", "needs > 95%", 0.95);
+    ring($("gSppro"), s.sppro_soc, 100, s.sppro_soc > 95 ? "var(--green)" : s.sppro_soc >= 40 ? "var(--orange)" : "var(--red)", s.sppro_soc != null ? `${fmt(s.sppro_soc, 0)}%` : "—", "needs > 95%", 0.95);
+    const f = s.frequency_hz;
+    ring($("gFreq"), f != null ? f - 49 : null, 2.5, f > 50.2 ? "var(--sun)" : "var(--blue)", f != null ? fmt(f, 2) : "—", "Hz · >50.2", (50.2 - 49) / 2.5);
+    genIcon($("gGen"), s.generator_running);
+
+    const socOk = s.solis_soc > 95 && s.sppro_soc > 95;
+    setCond("soc", s.solis_soc != null && s.sppro_soc != null ? socOk : null, `${fmt(s.solis_soc, 0)} % · ${fmt(s.sppro_soc, 0)} %`);
+    setCond("freq", f != null ? f > 50.2 : null, `${fmt(f, 2)} Hz`);
+    setCond("gen", s.generator_running == null ? null : !s.generator_running, s.generator_running ? "running" : s.generator_running === false ? "off" : "—");
+    setCond("enabled", s.heating_enabled == null ? null : s.heating_enabled, s.heating_enabled ? "on" : s.heating_enabled === false ? "off" : "—");
+  }
+
+  function setCond(k, ok, val) {
+    const c = document.querySelector(`.cond[data-k="${k}"]`);
+    c.classList.toggle("yes", ok === true);
+    c.classList.toggle("no", ok === false);
+    c.querySelector(".tick").textContent = ok === true ? "✓" : ok === false ? "✕" : "?";
+    c.querySelector(".val").textContent = val;
+  }
+
+  /* ---------------- charts ---------------- */
+  const W = 1000, PAD = { l: 40, r: 12, t: 10, b: 24 };
+
+  function timeTicks(start, end) {
+    const span = end - start, out = [];
+    const step = span <= 86400 * 1.1 ? 3 * 3600 : span <= 8 * 86400 ? 86400 : 5 * 86400;
+    const d = new Date(start * 1000);
+    d.setMinutes(0, 0, 0);
+    if (step >= 86400) d.setHours(0);
+    let t = d.getTime() / 1000;
+    while (t < start) t += step;
+    for (; t <= end; t += step) out.push(t);
+    return out;
+  }
+  function tickLabel(t, span) {
+    const d = new Date(t * 1000);
+    return span <= 86400 * 1.1 ? d.toLocaleTimeString([], { hour: "numeric" })
+                               : d.toLocaleDateString([], { weekday: "short", day: "numeric" });
+  }
+
+  function frame(host, H, start, end, yMin, yMax, yTicks, yFmt) {
+    host.innerHTML = "";
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, host);
+    const x = (t) => PAD.l + (t - start) / (end - start) * (W - PAD.l - PAD.r);
+    const y = (v) => PAD.t + (1 - (v - yMin) / (yMax - yMin)) * (H - PAD.t - PAD.b);
+    const grid = el("g", { class: "grid" }, svg), axis = el("g", { class: "axis" }, svg);
+    for (const v of yTicks) {
+      el("line", { x1: PAD.l, x2: W - PAD.r, y1: y(v), y2: y(v) }, grid);
+      const t = el("text", { x: PAD.l - 6, y: y(v) + 4, "text-anchor": "end" }, axis);
+      t.textContent = yFmt(v);
+    }
+    for (const tt of timeTicks(start, end)) {
+      const t = el("text", { x: x(tt), y: H - 6, "text-anchor": "middle" }, axis);
+      t.textContent = tickLabel(tt, end - start);
+    }
+    return { svg, x, y, H };
+  }
+
+  function linePath(points, x, y, gapS) {
+    let d = "", prevT = null;
+    for (const [t, v] of points) {
+      if (v === null || v === undefined) { prevT = null; continue; }
+      d += (prevT === null || t - prevT > gapS ? "M" : "L") + x(t).toFixed(1) + " " + y(v).toFixed(1) + " ";
+      prevT = t;
+    }
+    return d;
+  }
+
+  function hover(host, f, start, end, rowsFor) {
+    const tip = document.createElement("div");
+    tip.className = "tip";
+    host.appendChild(tip);
+    const cross = el("line", { y1: PAD.t, y2: f.H - PAD.b, stroke: "var(--mute)", "stroke-dasharray": "3 3", opacity: 0 }, f.svg);
+    const move = (ev) => {
+      const box = f.svg.getBoundingClientRect();
+      const px = (ev.clientX - box.left) / box.width * W;
+      const t = start + (px - PAD.l) / (W - PAD.l - PAD.r) * (end - start);
+      const res = rowsFor(t);
+      if (!res) { tip.style.display = "none"; cross.setAttribute("opacity", 0); return; }
+      cross.setAttribute("x1", f.x(res.t)); cross.setAttribute("x2", f.x(res.t)); cross.setAttribute("opacity", 0.7);
+      tip.innerHTML = `<b>${new Date(res.t * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</b>${res.html}`;
+      tip.style.display = "block";
+      tip.style.left = `${(f.x(res.t) / W) * box.width}px`;
+      tip.style.top = `${(PAD.t / f.H) * box.height + 8}px`;
+    };
+    f.svg.addEventListener("pointermove", move);
+    f.svg.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("opacity", 0); });
+  }
+
+  function nearest(rows, t) {
+    if (!rows || !rows.length) return null;
+    let lo = 0, hi = rows.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (rows[m][0] < t) lo = m; else hi = m; }
+    return Math.abs(rows[lo][0] - t) < Math.abs(rows[hi][0] - t) ? rows[lo] : rows[hi];
+  }
+
+  function drawTemp(h) {
+    const host = $("cTemp");
+    const vals = [];
+    for (const r in h.rooms) for (const row of h.rooms[r]) for (const i of [1, 2]) if (row[i] != null) vals.push(row[i]);
+    if (!vals.length) { host.innerHTML = `<div class="empty">No temperature history yet. It builds up from the first push.</div>`; return; }
+    const lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
+    const step = hi - lo > 16 ? 5 : hi - lo > 8 ? 2 : 1;
+    const ticks = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
+    const f = frame(host, 260, h.start, h.end, lo, hi, ticks, (v) => `${v}°`);
+    const gap = h.bucket_s * 3;
+    const outsideRows = [].concat(...Object.values(h.rooms)).map((r) => [r[0], r[2]]).sort((a, b) => a[0] - b[0]);
+    el("path", { d: linePath(outsideRows, f.x, f.y, gap), fill: "none", stroke: "var(--outside)", "stroke-width": 2, "stroke-dasharray": "5 5" }, f.svg);
+    for (const room in h.rooms) {
+      el("path", { d: linePath(h.rooms[room].map((r) => [r[0], r[1]]), f.x, f.y, gap), fill: "none",
+                   stroke: ROOM_COLOR[room], "stroke-width": 2.5, "stroke-linejoin": "round" }, f.svg);
+    }
+    hover(host, f, h.start, h.end, (t) => {
+      let html = "", tt = null;
+      for (const room in h.rooms) {
+        const r = nearest(h.rooms[room], t); if (!r) continue; tt = tt || r[0];
+        html += `<div style="color:${ROOM_COLOR[room]}">${ROOMS[room]}: ${fmt(r[1])}°C${r[4] != null ? ` (set ${fmt(r[4], 0)}°)` : ""}</div>`;
+        if (r[2] != null && !html.includes("Outside")) html += `<div style="color:var(--outside)">Outside: ${fmt(r[2])}°C</div>`;
+      }
+      return tt ? { t: tt, html } : null;
+    });
+  }
+
+  function drawActivity(h) {
+    const host = $("cActivity");
+    const lanes = Object.keys(ROOMS).concat(["surplus"]);
+    const laneH = 34, H = PAD.t + lanes.length * (laneH + 8) + PAD.b;
+    const f = frame(host, H, h.start, h.end, 0, 1, [], () => "");
+    const bw = Math.max(1, (W - PAD.l - PAD.r) * h.bucket_s / (h.end - h.start)) + 0.6;
+    lanes.forEach((lane, i) => {
+      const top = PAD.t + i * (laneH + 8);
+      el("rect", { x: PAD.l, y: top, width: W - PAD.l - PAD.r, height: laneH, rx: 6, fill: "var(--card2)" }, f.svg);
+      if (lane === "surplus") {
+        for (const r of h.surplus) if (r[1] > 0) el("rect", { x: f.x(r[0]), y: top, width: bw, height: laneH, fill: "var(--sun)", opacity: 0.25 + 0.6 * r[1] }, f.svg);
+      } else {
+        for (const r of h.rooms[lane] || []) {
+          if (r[5] > 0) el("rect", { x: f.x(r[0]), y: top + laneH * (1 - r[5]), width: bw, height: laneH * r[5], fill: "var(--heat)" }, f.svg);
+          if (r[6] > 0) el("rect", { x: f.x(r[0]), y: top + laneH * (1 - r[6]), width: bw, height: laneH * r[6], fill: "var(--cool)" }, f.svg);
+        }
+      }
+      // Label on top of the bars, with a backing so it stays readable
+      const name = lane === "surplus" ? "Surplus" : ROOMS[lane];
+      el("rect", { x: PAD.l + 4, y: top + laneH / 2 - 9, width: name.length * 6.6 + 10, height: 18, rx: 5, fill: "var(--card)", opacity: 0.85 }, f.svg);
+      el("text", { x: PAD.l + 9, y: top + laneH / 2 + 4, fill: "var(--fg)", "font-size": 11 }, f.svg).textContent = name;
+    });
+    hover(host, f, h.start, h.end, (t) => {
+      let html = "", tt = null;
+      for (const room in ROOMS) {
+        const r = nearest(h.rooms[room], t); if (!r) continue; tt = tt || r[0];
+        const what = r[5] > 0 ? `heating ${Math.round(r[5] * 100)}% of the time` : r[6] > 0 ? `cooling ${Math.round(r[6] * 100)}% of the time` : r[7] > 0 ? "on, idle" : "off";
+        html += `<div>${ROOMS[room]}: ${what}${r[9] > 0 ? " ☀" : ""}</div>`;
+      }
+      const s = nearest(h.surplus, t);
+      if (s) html += `<div style="color:var(--sun)">Surplus: ${s[1] > 0 ? "yes" : "no"} · ${fmt(s[3], 0)}% / ${fmt(s[4], 0)}%${s[5] != null ? ` · ${fmt(s[5], 2)} Hz` : ""}</div>`;
+      return tt ? { t: tt, html } : null;
+    });
+  }
+
+  function drawPower(h) {
+    const host = $("cPower");
+    const rows = (h.rooms.lounge || []).map((r) => [r[0], r[8]]);
+    const max = Math.max(1, ...rows.map((r) => r[1] || 0));
+    const top = Math.ceil(max * 2) / 2;
+    const ticks = []; for (let v = 0; v <= top + 1e-9; v += top > 2 ? 1 : 0.5) ticks.push(v);
+    const f = frame(host, 170, h.start, h.end, 0, top, ticks, (v) => `${v}kW`);
+    if (!rows.some((r) => r[1] != null)) { el("text", { x: W / 2, y: 80, "text-anchor": "middle", fill: "var(--mute)", "font-size": 13 }, f.svg).textContent = "No power readings yet"; return; }
+    const gap = h.bucket_s * 3;
+    // Split into continuous segments, then draw each as a filled area plus a line
+    const segs = []; let cur = [], prevT = null;
+    for (const [t, v] of rows) {
+      if (v == null || (prevT !== null && t - prevT > gap)) { if (cur.length) segs.push(cur); cur = []; }
+      if (v != null) { cur.push([t, v]); prevT = t; } else prevT = null;
+    }
+    if (cur.length) segs.push(cur);
+    el("defs", {}, f.svg).innerHTML = `<linearGradient id="pw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fb923c" stop-opacity=".55"/><stop offset="1" stop-color="#fb923c" stop-opacity="0"/></linearGradient>`;
+    for (const s of segs) {
+      const pts = s.map(([t, v]) => `${f.x(t).toFixed(1)} ${f.y(v).toFixed(1)}`);
+      el("path", { d: `M${f.x(s[0][0]).toFixed(1)} ${f.y(0)} L${pts.join(" L")} L${f.x(s[s.length - 1][0]).toFixed(1)} ${f.y(0)} Z`, fill: "url(#pw)" }, f.svg);
+      el("path", { d: `M${pts.join(" L")}`, fill: "none", stroke: "var(--heat)", "stroke-width": 2 }, f.svg);
+    }
+    hover(host, f, h.start, h.end, (t) => { const r = nearest(h.rooms.lounge, t); return r ? { t: r[0], html: `<div>${fmt(r[8], 2)} kW</div>` } : null; });
+  }
+
+  function drawDaily(sum) {
+    const host = $("cDaily");
+    const days = sum.days, rooms = Object.keys(ROOMS);
+    let max = 1;
+    for (const r of rooms) for (const d of sum.rooms[r]) if (d) max = Math.max(max, d.heat_h + d.cool_h);
+    const top = Math.ceil(max);
+    const step = top > 12 ? 4 : top > 6 ? 2 : 1;
+    const ticks = []; for (let v = 0; v <= top; v += step) ticks.push(v);
+    host.innerHTML = "";
+    const H = 220;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, host);
+    const y = (v) => PAD.t + 14 + (1 - v / top) * (H - PAD.t - 14 - PAD.b - 14);
+    const grid = el("g", { class: "grid" }, svg), axis = el("g", { class: "axis" }, svg);
+    for (const v of ticks) { el("line", { x1: PAD.l, x2: W - PAD.r, y1: y(v), y2: y(v) }, grid); el("text", { x: PAD.l - 6, y: y(v) + 4, "text-anchor": "end" }, axis).textContent = `${v}h`; }
+    const slot = (W - PAD.l - PAD.r) / days.length, bw = Math.min(36, slot / 3);
+    days.forEach((day, i) => {
+      const cx = PAD.l + slot * (i + 0.5);
+      el("text", { x: cx, y: H - 6, "text-anchor": "middle" }, axis).textContent = new Date(day + "T12:00").toLocaleDateString([], { weekday: "short", day: "numeric" });
+      rooms.forEach((room, j) => {
+        const d = sum.rooms[room][i] || { heat_h: 0, cool_h: 0 };
+        const x = cx + (j - rooms.length / 2) * (bw + 4) + 2;
+        const yh = y(d.heat_h), yc = y(d.heat_h + d.cool_h);
+        el("rect", { x, y: yh, width: bw, height: y(0) - yh, fill: "var(--heat)", rx: 3 }, svg);
+        if (d.cool_h > 0) el("rect", { x, y: yc, width: bw, height: yh - yc, fill: "var(--cool)", rx: 3 }, svg);
+        el("rect", { x, y: y(0) + 2, width: bw, height: 3, fill: ROOM_COLOR[room] }, svg);
+        if (room === "lounge" && d.kwh != null) el("text", { x: x + bw / 2, y: yc - 5, "text-anchor": "middle", fill: "var(--mute)", "font-size": 10 }, svg).textContent = `${fmt(d.kwh, 1)}kWh`;
+        const tip = el("title", {}, svg.lastChild);
+        tip.textContent = `${ROOMS[room]} ${day}: ${fmt(d.heat_h, 1)} h heating, ${fmt(d.cool_h, 1)} h cooling`;
+      });
+    });
+    const leg = el("g", { class: "axis" }, svg);
+    rooms.forEach((room, j) => {
+      el("rect", { x: W - PAD.r - 230 + j * 120, y: 4, width: 12, height: 4, fill: ROOM_COLOR[room] }, leg);
+      el("text", { x: W - PAD.r - 214 + j * 120, y: 10 }, leg).textContent = ROOMS[room];
+    });
+  }
+
+  /* ---------------- data loading ---------------- */
+  let hours = 24;
+  async function getJSON(path) {
+    const r = await fetch(path, { cache: "no-store" });
+    if (!r.ok) throw new Error(path + " " + r.status);
+    return r.json();
+  }
+
+  async function loadCurrent() {
+    try {
+      current = await getJSON("api/current");
+      const live = $("live");
+      live.className = "live " + (current.stale ? "stale" : "ok");
+      $("liveText").textContent = current.age_s == null ? "No data yet"
+        : current.stale ? `Last update ${Math.round(current.age_s / 60)} min ago` : "Live";
+      for (const room in ROOMS) renderUnit(room, current.units[room]);
+      renderSurplus(current.surplus || {});
+    } catch (e) {
+      $("live").className = "live stale"; $("liveText").textContent = "Offline";
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      const h = await getJSON(`api/history?hours=${hours}`);
+      drawTemp(h); drawActivity(h); drawPower(h);
+    } catch (e) { $("cTemp").innerHTML = `<div class="empty">History unavailable.</div>`; }
+  }
+  async function loadSummary() {
+    try { drawDaily(await getJSON("api/summary?days=7")); } catch (e) { $("cDaily").innerHTML = `<div class="empty">Summary unavailable.</div>`; }
+  }
+
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
+    hours = Number(b.dataset.h);
+    document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    loadHistory();
+  }));
+
+  buildUnits();
+  loadCurrent(); loadHistory(); loadSummary();
+  setInterval(loadCurrent, 30000);
+  setInterval(loadHistory, 5 * 60000);
+  setInterval(loadSummary, 10 * 60000);
+})();
+</script>
+</body>
+</html>

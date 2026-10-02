@@ -18,3 +18,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Lodge Comfort runtime data (SQLite)
+comfort_monitor/data/
