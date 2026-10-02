@@ -384,7 +384,7 @@ def healthz():
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8120)
+    p.add_argument("--port", type=int, default=8125)
     p.add_argument("--debug", action="store_true")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")

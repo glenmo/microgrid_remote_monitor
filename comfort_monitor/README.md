@@ -37,7 +37,7 @@ Lounge unit reports energy (compressor kW and kWh today), so kWh is shown for it
 
 ```bash
 python3 -m venv venv && venv/bin/pip install -r requirements.txt
-COMFORT_DB=/tmp/comfort.db COMFORT_API_KEY=test venv/bin/python app.py --port 8120
+COMFORT_DB=/tmp/comfort.db COMFORT_API_KEY=test venv/bin/python app.py --port 8125
 ```
 
 ## Deploy (pignus)

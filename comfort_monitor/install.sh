@@ -4,7 +4,7 @@
 #
 # Usage (from this directory, as the deploying user):
 #   sudo bash install.sh            # first install: generates the push key
-#   sudo bash install.sh --port 8120
+#   sudo bash install.sh --port 8125
 #
 # The push key lives in /etc/comfort-monitor.env (root-only). LodgyBox needs the
 # same value as `comfort_push_key` in its secrets.yaml.
@@ -15,7 +15,7 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="comfort-monitor.service"
 SERVICE_USER="${SUDO_USER:-$USER}"
 ENV_FILE="/etc/comfort-monitor.env"
-PORT="8120"
+PORT="8125"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

@@ -27,7 +27,7 @@ Deployment happens by `git pull --ff-only` + `sudo systemctl restart <unit>` ove
 | --- | --- | --- |
 | `rubberduck` (site Pi) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`app.py`), `microgrid-pusher.service` |
 | `kitty` (SP Pro USB Pi) | `~/microgrid_remote_monitor` | `sppro-pusher.service` |
-| `pignus` (VPS, `pignus.arachnoid.net.au`) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`server/server_app.py`), `comfort-monitor.service` (`comfort_monitor/app.py`, :8120, `/comfort/`) |
+| `pignus` (VPS, `pignus.arachnoid.net.au`) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`server/server_app.py`), `comfort-monitor.service` (`comfort_monitor/app.py`, :8125, `/comfort/`) |
 
 Template or API-shape changes must go to rubberduck and pignus together. pignus runs fail2ban, so batch remote commands into as few SSH connections as you can, and stop after a failed connection rather than retrying.
 
