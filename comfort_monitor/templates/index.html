@@ -2,10 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lodge Comfort">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="static/apple-touch-icon.png">
 <title>Lodge Comfort</title>
 <meta name="description" content="Live aircon comfort and solar-surplus heating at the Moora Moora lodge.">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="static/icon.svg" type="image/svg+xml">
 <style>
   :root {
     --bg:#0e1116; --card:#171b22; --card2:#1f2530; --fg:#eef1f5; --mute:#8b95a5; --line:#2a313c;
@@ -112,14 +119,54 @@
   .faq p { color:var(--mute); font-size:14px; margin-top:2px; }
   footer { color:var(--mute); font-size:13px; text-align:center; padding:12px 0 24px; }
 
+  .chart svg { touch-action:pan-y; -webkit-user-select:none; user-select:none; }
+  .faq details { border-top:1px solid var(--line); padding:10px 0; }
+  .faq details:first-of-type { border-top:0; padding-top:0; }
+  .faq summary { cursor:pointer; font-weight:600; font-size:15px; list-style:none; display:flex; justify-content:space-between; gap:12px; }
+  .faq summary::-webkit-details-marker { display:none; }
+  .faq summary::after { content:"+"; color:var(--mute); font-weight:400; }
+  .faq details[open] summary::after { content:"−"; }
+  .faq details p { margin-top:6px; }
+  section[id] { scroll-margin-top:72px; }
+  .tabbar { display:none; }
+
   @media (max-width: 760px) {
-    body { padding:16px; }
-    .hero { grid-template-columns:90px 1fr; }
-    .gauges { grid-template-columns:repeat(2, minmax(0,1fr)); }
-    .steps { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    body { padding:0 12px calc(84px + env(safe-area-inset-bottom)); }
+    header { position:sticky; top:0; z-index:5; background:var(--bg); margin:0 -12px 12px; padding:calc(10px + env(safe-area-inset-top)) 12px 10px;
+             flex-wrap:nowrap; }
+    header h1 { font-size:20px; }
+    header h1 small { font-size:12px; }
+    header .back { display:none; }
+    .live { padding:5px 10px; font-size:13px; }
+    .card { padding:14px; border-radius:14px; }
+    section { margin-bottom:12px; }
+    .hero { grid-template-columns:64px 1fr; gap:12px; }
+    .hero h3 { font-size:18px; }
+    .hero p { font-size:14px; }
+    .gauges { grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-top:12px; }
+    .gauge svg { max-width:92px; }
+    .units { grid-template-columns:1fr; gap:12px; }
+    .unit .art { max-height:120px; }
+    .readings { gap:8px; }
+    .reading { padding:8px 10px; }
+    .reading .v { font-size:22px; }
+    .charthead { position:sticky; top:calc(56px + env(safe-area-inset-top)); z-index:4; background:var(--card); margin:-4px -14px 8px; padding:6px 14px; }
+    .tabs { width:100%; }
+    .tabs button { flex:1; padding:7px 0; }
+    .steps { grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; }
+    .step { padding:10px 8px; }
+    .step svg { width:48px; height:48px; }
     .step:not(:last-child)::after { display:none; }
-    .explain-grid { grid-template-columns:1fr; }
-    .reading .v { font-size:24px; }
+    .explain-grid { grid-template-columns:1fr; gap:16px; }
+    .cond { font-size:14px; padding:8px 10px; }
+    .tip { font-size:13px; }
+    .tabbar { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:10; background:rgba(14,17,22,.94);
+              -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); border-top:1px solid var(--line);
+              padding:6px 8px calc(6px + env(safe-area-inset-bottom)); }
+    .tabbar a { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 0; font-size:12px;
+                color:var(--mute); text-decoration:none; border-radius:10px; }
+    .tabbar a svg { width:24px; height:24px; }
+    .tabbar a[aria-current="true"] { color:var(--fg); background:var(--card2); }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation:none !important; transition:none !important; }
@@ -131,7 +178,7 @@
   <h1>Lodge Comfort <small>Moora Moora lodge · aircons &amp; solar-surplus heating</small></h1>
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <span class="live" id="live"><i></i><span id="liveText">Connecting…</span></span>
-    <a href="/" class="chip" style="text-decoration:none">← Microgrid monitor</a>
+    <a href="/" class="chip back" style="text-decoration:none">← Microgrid monitor</a>
   </div>
 </header>
 
@@ -169,7 +216,7 @@
 <section class="units" id="units"></section>
 
 <!-- History -->
-<section class="card">
+<section class="card" id="history">
   <div class="charthead">
     <h2 style="margin:0">History</h2>
     <div class="tabs" role="group" aria-label="Time range">
@@ -211,6 +258,7 @@
       <span style="--c:var(--heat)" class="box">Hours heating</span>
       <span style="--c:var(--cool)" class="box">Hours cooling</span>
     </div>
+    <div class="legend" id="dailyRooms" style="margin-top:4px"></div>
     <div class="chart" id="cDaily"></div>
     <p class="note">Hours are counted while a unit reports it is actively heating or cooling. kWh figures above the bars are measured by the units themselves. A unit starts reporting energy once it has done some real heating or cooling.</p>
   </div>
@@ -253,19 +301,23 @@
       <p class="note">The rule has to hold for 5 minutes before heating starts, and heating stops 10 minutes after it no longer holds, so passing clouds don't make the aircons cycle on and off.</p>
     </div>
     <div class="faq">
-      <h4 style="margin-top:0">Why the frequency?</h4>
-      <p>When the SP Pro's batteries are full it nudges the microgrid's AC frequency up from 50 Hz. Solar inverters see that and throttle back. A frequency above 50.2 Hz is a clear sign that sunshine is being turned away, so it's a good moment to use it.</p>
-      <h4>What does it switch on?</h4>
-      <p>Only units that are switched off, set to heat at <span id="setpointTxt">the chosen</span> °C. If someone is already using an aircon, it is left alone.</p>
-      <h4>What happens when the surplus ends?</h4>
-      <p>Ten minutes later, the automation turns off the units it switched on. If anyone changed one of those units in the meantime, it's treated as theirs and left running.</p>
-      <h4>Why not the generator?</h4>
-      <p>Energy from the generator is never "spare", so surplus heating never runs while the generator is on.</p>
-      <h4>What isn't shown?</h4>
-      <p>The Caretaker's Flat has its own aircon, but it's someone's home, so it isn't published here and isn't part of the automation.</p>
+      <details open><summary>Why the frequency?</summary><p>When the SP Pro's batteries are full it nudges the microgrid's AC frequency up from 50 Hz. Solar inverters see that and throttle back. A frequency above 50.2 Hz is a clear sign that sunshine is being turned away, so it's a good moment to use it.</p></details>
+      <details><summary>What does it switch on?</summary><p>Only units that are switched off, set to heat at <span id="setpointTxt">the chosen</span> °C. If someone is already using an aircon, it is left alone.</p></details>
+      <details><summary>What happens when the surplus ends?</summary><p>Ten minutes later, the automation turns off the units it switched on. If anyone changed one of those units in the meantime, it's treated as theirs and left running.</p></details>
+      <details><summary>Why not the generator?</summary><p>Energy from the generator is never "spare", so surplus heating never runs while the generator is on.</p></details>
+      <details><summary>What isn't shown?</summary><p>The Caretaker's Flat has its own aircon, but it's someone's home, so it isn't published here and isn't part of the automation.</p></details>
     </div>
   </div>
 </section>
+
+<nav class="tabbar" aria-label="Sections">
+  <a href="#surplusCard" data-sec="surplusCard" aria-current="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Now</a>
+  <a href="#history" data-sec="history">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>History</a>
+  <a href="#how" data-sec="how">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>How it works</a>
+</nav>
 
 <footer>
   Data from the lodge's Home Assistant, updated every minute · battery &amp; frequency from the <a href="/">Wombat Hollow Microgrid monitor</a>
@@ -471,11 +523,16 @@
   }
 
   /* ---------------- charts ---------------- */
-  const W = 1000, PAD = { l: 40, r: 12, t: 10, b: 24 };
+  // Charts are drawn at the container's real pixel width so text stays legible on phones
+  let W = 1000;
+  const PAD = { l: 40, r: 12, t: 10, b: 24 };
+  const narrow = () => W < 560;
+  const sizeTo = (host) => { W = Math.max(280, Math.round(host.clientWidth || 1000)); };
 
   function timeTicks(start, end) {
     const span = end - start, out = [];
-    const step = span <= 86400 * 1.1 ? 3 * 3600 : span <= 8 * 86400 ? 86400 : 5 * 86400;
+    const step = span <= 86400 * 1.1 ? (narrow() ? 6 : 3) * 3600
+               : span <= 8 * 86400 ? (narrow() ? 2 : 1) * 86400 : (narrow() ? 10 : 5) * 86400;
     const d = new Date(start * 1000);
     d.setMinutes(0, 0, 0);
     if (step >= 86400) d.setHours(0);
@@ -505,7 +562,7 @@
       const t = el("text", { x: x(tt), y: H - 6, "text-anchor": "middle" }, axis);
       t.textContent = tickLabel(tt, end - start);
     }
-    return { svg, x, y, H };
+    return { svg, x, y, H, W };
   }
 
   function linePath(points, x, y, gapS) {
@@ -525,18 +582,23 @@
     const cross = el("line", { y1: PAD.t, y2: f.H - PAD.b, stroke: "var(--mute)", "stroke-dasharray": "3 3", opacity: 0 }, f.svg);
     const move = (ev) => {
       const box = f.svg.getBoundingClientRect();
-      const px = (ev.clientX - box.left) / box.width * W;
-      const t = start + (px - PAD.l) / (W - PAD.l - PAD.r) * (end - start);
+      const px = (ev.clientX - box.left) / box.width * f.W;
+      const t = start + (px - PAD.l) / (f.W - PAD.l - PAD.r) * (end - start);
       const res = rowsFor(t);
       if (!res) { tip.style.display = "none"; cross.setAttribute("opacity", 0); return; }
       cross.setAttribute("x1", f.x(res.t)); cross.setAttribute("x2", f.x(res.t)); cross.setAttribute("opacity", 0.7);
       tip.innerHTML = `<b>${new Date(res.t * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</b>${res.html}`;
       tip.style.display = "block";
-      tip.style.left = `${(f.x(res.t) / W) * box.width}px`;
+      const left = (f.x(res.t) / f.W) * box.width;
+      tip.style.left = `${Math.min(box.width - 70, Math.max(70, left))}px`;
       tip.style.top = `${(PAD.t / f.H) * box.height + 8}px`;
     };
+    const hide = () => { tip.style.display = "none"; cross.setAttribute("opacity", 0); };
+    let hideTimer = null;
     f.svg.addEventListener("pointermove", move);
-    f.svg.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("opacity", 0); });
+    f.svg.addEventListener("pointerdown", (ev) => { clearTimeout(hideTimer); move(ev); });
+    f.svg.addEventListener("pointerleave", (ev) => { if (ev.pointerType === "mouse") hide(); });
+    f.svg.addEventListener("pointerup", (ev) => { if (ev.pointerType !== "mouse") { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 2500); } });
   }
 
   function nearest(rows, t) {
@@ -548,13 +610,14 @@
 
   function drawTemp(h) {
     const host = $("cTemp");
+    sizeTo(host);
     const vals = [];
     for (const r in h.rooms) for (const row of h.rooms[r]) for (const i of [1, 2]) if (row[i] != null) vals.push(row[i]);
     if (!vals.length) { host.innerHTML = `<div class="empty">No temperature history yet. It builds up from the first push.</div>`; return; }
     const lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
     const step = hi - lo > 16 ? 5 : hi - lo > 8 ? 2 : 1;
     const ticks = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
-    const f = frame(host, 260, h.start, h.end, lo, hi, ticks, (v) => `${v}°`);
+    const f = frame(host, narrow() ? 220 : 260, h.start, h.end, lo, hi, ticks, (v) => `${v}°`);
     const gap = h.bucket_s * 3;
     const outsideRows = [].concat(...Object.values(h.rooms)).map((r) => [r[0], r[2]]).sort((a, b) => a[0] - b[0]);
     el("path", { d: linePath(outsideRows, f.x, f.y, gap), fill: "none", stroke: "var(--outside)", "stroke-width": 2, "stroke-dasharray": "5 5" }, f.svg);
@@ -575,8 +638,9 @@
 
   function drawActivity(h) {
     const host = $("cActivity");
+    sizeTo(host);
     const lanes = Object.keys(ROOMS).concat(["surplus"]);
-    const laneH = 34, H = PAD.t + lanes.length * (laneH + 8) + PAD.b;
+    const laneH = narrow() ? 30 : 34, H = PAD.t + lanes.length * (laneH + 8) + PAD.b;
     const f = frame(host, H, h.start, h.end, 0, 1, [], () => "");
     const bw = Math.max(1, (W - PAD.l - PAD.r) * h.bucket_s / (h.end - h.start)) + 0.6;
     lanes.forEach((lane, i) => {
@@ -610,13 +674,14 @@
 
   function drawPower(h) {
     const host = $("cPower");
+    sizeTo(host);
     const series = Object.keys(ROOMS).map((room) => ({ room, rows: (h.rooms[room] || []).map((r) => [r[0], r[8]]) }))
                                      .filter((sr) => sr.rows.some((r) => r[1] != null));
     $("powerLegend").innerHTML = series.map((sr) => `<span style="--c:${ROOM_COLOR[sr.room]}">${ROOMS[sr.room]}</span>`).join("");
     const max = Math.max(1, ...series.flatMap((sr) => sr.rows.map((r) => r[1] || 0)));
     const top = Math.ceil(max * 2) / 2;
     const ticks = []; for (let v = 0; v <= top + 1e-9; v += top > 2 ? 1 : 0.5) ticks.push(v);
-    const f = frame(host, 170, h.start, h.end, 0, top, ticks, (v) => `${v}kW`);
+    const f = frame(host, narrow() ? 150 : 170, h.start, h.end, 0, top, ticks, (v) => `${v}kW`);
     if (!series.length) { el("text", { x: W / 2, y: 80, "text-anchor": "middle", fill: "var(--mute)", "font-size": 13 }, f.svg).textContent = "No power readings yet"; return; }
     const gap = h.bucket_s * 3;
     const defs = el("defs", {}, f.svg);
@@ -644,6 +709,7 @@
 
   function drawDaily(sum) {
     const host = $("cDaily");
+    sizeTo(host);
     const days = sum.days, rooms = Object.keys(ROOMS);
     let max = 1;
     for (const r of rooms) for (const d of sum.rooms[r]) if (d) max = Math.max(max, d.heat_h + d.cool_h);
@@ -656,10 +722,10 @@
     const y = (v) => PAD.t + 14 + (1 - v / top) * (H - PAD.t - 14 - PAD.b - 14);
     const grid = el("g", { class: "grid" }, svg), axis = el("g", { class: "axis" }, svg);
     for (const v of ticks) { el("line", { x1: PAD.l, x2: W - PAD.r, y1: y(v), y2: y(v) }, grid); el("text", { x: PAD.l - 6, y: y(v) + 4, "text-anchor": "end" }, axis).textContent = `${v}h`; }
-    const slot = (W - PAD.l - PAD.r) / days.length, bw = Math.min(36, slot / 3);
+    const slot = (W - PAD.l - PAD.r) / days.length, bw = Math.min(36, Math.max(8, slot / 3 - 2));
     days.forEach((day, i) => {
       const cx = PAD.l + slot * (i + 0.5);
-      el("text", { x: cx, y: H - 6, "text-anchor": "middle" }, axis).textContent = new Date(day + "T12:00").toLocaleDateString([], { weekday: "short", day: "numeric" });
+      el("text", { x: cx, y: H - 6, "text-anchor": "middle" }, axis).textContent = new Date(day + "T12:00").toLocaleDateString([], narrow() ? { weekday: "narrow" } : { weekday: "short", day: "numeric" });
       rooms.forEach((room, j) => {
         const d = sum.rooms[room][i] || { heat_h: 0, cool_h: 0 };
         const x = cx + (j - rooms.length / 2) * (bw + 4) + 2;
@@ -667,16 +733,12 @@
         el("rect", { x, y: yh, width: bw, height: y(0) - yh, fill: "var(--heat)", rx: 3 }, svg);
         if (d.cool_h > 0) el("rect", { x, y: yc, width: bw, height: yh - yc, fill: "var(--cool)", rx: 3 }, svg);
         el("rect", { x, y: y(0) + 2, width: bw, height: 3, fill: ROOM_COLOR[room] }, svg);
-        if (d.kwh != null) el("text", { x: x + bw / 2, y: yc - 5, "text-anchor": "middle", fill: "var(--mute)", "font-size": 10 }, svg).textContent = `${fmt(d.kwh, 1)}kWh`;
+        if (d.kwh != null) el("text", { x: x + bw / 2, y: yc - 5, "text-anchor": "middle", fill: "var(--mute)", "font-size": 10 }, svg).textContent = narrow() ? fmt(d.kwh, 1) : `${fmt(d.kwh, 1)}kWh`;
         const tip = el("title", {}, svg.lastChild);
         tip.textContent = `${ROOMS[room]} ${day}: ${fmt(d.heat_h, 1)} h heating, ${fmt(d.cool_h, 1)} h cooling`;
       });
     });
-    const leg = el("g", { class: "axis" }, svg);
-    rooms.forEach((room, j) => {
-      el("rect", { x: W - PAD.r - 230 + j * 120, y: 4, width: 12, height: 4, fill: ROOM_COLOR[room] }, leg);
-      el("text", { x: W - PAD.r - 214 + j * 120, y: 10 }, leg).textContent = ROOMS[room];
-    });
+    $("dailyRooms").innerHTML = rooms.map((room) => `<span style="--c:${ROOM_COLOR[room]}">${ROOMS[room]}</span>`).join("");
   }
 
   /* ---------------- data loading ---------------- */
@@ -701,15 +763,43 @@
     }
   }
 
+  let lastHistory = null, lastSummary = null;
+  function drawHistory() { if (lastHistory) { drawTemp(lastHistory); drawActivity(lastHistory); drawPower(lastHistory); } }
   async function loadHistory() {
-    try {
-      const h = await getJSON(`api/history?hours=${hours}`);
-      drawTemp(h); drawActivity(h); drawPower(h);
-    } catch (e) { $("cTemp").innerHTML = `<div class="empty">History unavailable.</div>`; }
+    try { lastHistory = await getJSON(`api/history?hours=${hours}`); drawHistory(); }
+    catch (e) { $("cTemp").innerHTML = `<div class="empty">History unavailable.</div>`; }
   }
   async function loadSummary() {
-    try { drawDaily(await getJSON("api/summary?days=7")); } catch (e) { $("cDaily").innerHTML = `<div class="empty">Summary unavailable.</div>`; }
+    try { lastSummary = await getJSON("api/summary?days=7"); drawDaily(lastSummary); }
+    catch (e) { $("cDaily").innerHTML = `<div class="empty">Summary unavailable.</div>`; }
   }
+
+  // Redraw charts at the new width after rotation/resize
+  let lastWidth = 0, resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const w = $("cTemp").clientWidth;
+      if (Math.abs(w - lastWidth) < 8) return;
+      lastWidth = w; drawHistory(); if (lastSummary) drawDaily(lastSummary);
+    }, 200);
+  });
+
+  // When the app comes back to the foreground (e.g. reopened from the home screen), refresh at once
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { loadCurrent(); loadHistory(); loadSummary(); }
+  });
+
+  // Bottom tab bar: highlight the section in view
+  const tabs = [...document.querySelectorAll(".tabbar a")];
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) tabs.forEach((a) => a.setAttribute("aria-current", String(a.dataset.sec === e.target.id)));
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    ["surplusCard", "history", "how"].forEach((id) => io.observe($(id)));
+  }
+
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
     hours = Number(b.dataset.h);

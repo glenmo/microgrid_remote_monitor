@@ -36,6 +36,15 @@ unit's energy sensors once that unit has recorded some usage (home-assistant/cor
 unit's power data appears on the page after its first real heating or cooling. LodgyBox
 reloads such units nightly.
 
+## Phones
+
+The page is mobile-first below 760 px: sticky header, bottom tab bar (Now · History · How it
+works), charts drawn at the screen's real pixel width (tap or drag for values), and FAQ
+answers that collapse. It can be installed from the browser ("Add to Home Screen"):
+`/manifest.webmanifest`, icons in `static/`, and a network-first service worker (`sw.js`)
+that falls back to the last data seen when offline. Bump `CACHE` in `sw.js` if you change
+cached assets in a way that must reach installed copies immediately.
+
 ## Run locally
 
 ```bash

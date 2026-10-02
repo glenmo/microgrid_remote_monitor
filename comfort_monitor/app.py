@@ -24,7 +24,7 @@ import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from flask import Flask, abort, jsonify, render_template, request
+from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 
 log = logging.getLogger("comfort")
 
@@ -372,6 +372,36 @@ def api_summary():
 @app.route("/")
 def index():
     return render_template("index.html", room_list=list(PUBLIC_ROOMS.items()))
+
+
+@app.route("/manifest.webmanifest")
+def manifest():
+    resp = jsonify({
+        "name": "Lodge Comfort",
+        "short_name": "Lodge Comfort",
+        "description": "Live aircon comfort and solar-surplus heating at the Moora Moora lodge.",
+        "start_url": "./",
+        "scope": "./",
+        "display": "standalone",
+        "background_color": "#0e1116",
+        "theme_color": "#0e1116",
+        "icons": [
+            {"src": "static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "static/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            {"src": "static/icon.svg", "sizes": "any", "type": "image/svg+xml"},
+        ],
+    })
+    resp.headers["Content-Type"] = "application/manifest+json"
+    return resp
+
+
+@app.route("/sw.js")
+def service_worker():
+    # Served from the app root so its scope covers the whole page (/comfort/ behind Apache)
+    resp = send_from_directory(os.path.dirname(os.path.abspath(__file__)), "sw.js", mimetype="application/javascript")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 @app.route("/healthz")
