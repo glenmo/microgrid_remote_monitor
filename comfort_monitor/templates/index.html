@@ -433,11 +433,11 @@
     $("sunCloud").setAttribute("opacity", active ? 0 : 0.95);
     $("sunDisc").setAttribute("opacity", active ? 1 : 0.55);
     $("surplusTitle").textContent = active ? "Surplus sunshine — warming the lodge" : s.active === false ? "No surplus right now" : "Surplus status unknown";
-    const rooms = Object.entries(s.rooms_enabled || {}).filter(([, v]) => v).map(([k]) => ROOMS[k]).filter(Boolean);
+    const rooms = ROOM_LIST.filter(([k]) => (s.rooms_enabled || {})[k]).map(([, label]) => label);
     $("surplusText").textContent = active
       ? `Spare solar energy is heating the ${rooms.join(" and ") || "selected rooms"}.`
       : s.generator_running ? "The generator is running, so there's no spare solar to use."
-      : "Batteries are still charging, so the sunshine is being stored for later.";
+      : "The batteries aren't full, so any solar energy is being stored for later.";
     const chips = [];
     if (s.heating_enabled === false) chips.push(`<span class="chip warn">Surplus heating switched off</span>`);
     else if (s.heating_enabled) chips.push(`<span class="chip sun">Surplus heating on</span>`);
