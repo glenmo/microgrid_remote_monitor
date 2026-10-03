@@ -63,7 +63,8 @@
   .unit h2 b { color:var(--fg); font-size:18px; text-transform:none; letter-spacing:0; font-weight:600; }
   .unit .art { width:100%; height:auto; display:block; }
   .flow path { fill:none; stroke-width:3; stroke-linecap:round; stroke-dasharray:6 10; opacity:.9; }
-  .running .flow path { animation:flow 1.4s linear infinite; }
+  .flow { transition:opacity 1.2s; }
+  .running .flow path { animation:flow var(--flowspeed, 1.4s) linear infinite; }
   @keyframes flow { to { stroke-dashoffset:-32; } }
   .fanblade { transform-box:fill-box; transform-origin:center; }
   .running .fanblade { animation:spin var(--fanspeed, 1.2s) linear infinite; }
@@ -400,11 +401,14 @@
       </svg>`;
   }
 
-  function flowPaths(g, color, swing) {
+  // Rebuild only when the look changes, so the 30 s refresh doesn't restart the animation
+  function flowPaths(g, color, swing, n) {
+    const key = `${color}|${swing}|${n}`;
+    if (g.dataset.key === key) return;
+    g.dataset.key = key;
     g.innerHTML = "";
-    const n = 6;
     for (let i = 0; i < n; i++) {
-      const x = 60 + i * 40;
+      const x = 160 + (i - (n - 1) / 2) * 40;
       const tilt = (swing === "Horizontal" || swing === "3D") ? (i - (n - 1) / 2) * 6 : 0;
       el("path", { d: `M${x} 78 q ${8 + tilt / 2} 16 ${tilt} 32 q ${-8 + tilt / 2} 16 ${tilt} 32`, stroke: color,
                    style: `animation-delay:${-i * 0.2}s` }, g);
@@ -442,8 +446,13 @@
     const action = u.hvac_action || (u.hvac_mode === "off" ? "off" : "idle");
     const a = ACTION[action] || ACTION.idle;
     const running = u.hvac_mode && u.hvac_mode !== "off";
+    // Waves follow compressor power where the unit reports it: fewer, fainter and slower
+    // at low output, gone when the compressor is paused. Units without it keep full waves.
+    const kw = u.compressor_kw;
+    const level = kw == null ? 1 : kw < 0.05 ? 0 : Math.min(1, Math.sqrt(kw / 2.5));
+    const paused = running && action !== "idle" && level === 0;
     const state = card.querySelector(".state");
-    state.textContent = u.available === false ? "Unavailable" : running ? `${MODE[u.hvac_mode] || u.hvac_mode} · ${a.label}` : "Off";
+    state.textContent = u.available === false ? "Unavailable" : running ? `${MODE[u.hvac_mode] || u.hvac_mode} · ${paused ? "Paused" : a.label}` : "Off";
     state.className = "chip state " + (running ? a.cls : "");
     card.classList.toggle("running", !!running);
     card.style.setProperty("--fanspeed", FAN_SPEED[u.fan_mode] || "1.2s");
@@ -451,9 +460,17 @@
     svg.querySelector(".led").setAttribute("fill", running ? a.color : "#9ca3af");
     svg.querySelector(".disp").textContent = running && u.target_temp != null ? `${fmt(u.target_temp, 0)}°` : "--";
     svg.querySelector(".louvre").setAttribute("transform", running ? "translate(0 5)" : "");
-    svg.querySelector(".rest").setAttribute("opacity", running ? 0 : 1);
+    const rest = svg.querySelector(".rest");
+    rest.textContent = paused ? "Compressor paused" : "Resting";
+    rest.setAttribute("opacity", running && !paused ? 0 : 1);
     const flow = svg.querySelector(".flow");
-    if (running && action !== "idle") flowPaths(flow, a.color, u.swing_mode); else flow.innerHTML = "";
+    if (running && action !== "idle" && level > 0) {
+      flowPaths(flow, a.color, u.swing_mode, 2 + Math.round(level * 4));
+      flow.style.opacity = (0.35 + 0.65 * level).toFixed(2);
+      flow.style.setProperty("--flowspeed", `${(2.6 - 1.4 * level).toFixed(2)}s`);
+    } else {
+      flow.style.opacity = 0;
+    }
 
     card.querySelector(".t-in").innerHTML = u.inside_temp != null ? `${fmt(u.inside_temp)}<small>°C</small>` : "—";
     card.querySelector(".t-set").innerHTML = running && u.target_temp != null ? `${fmt(u.target_temp, 0)}<small>°C</small>` : "<small>off</small>";
