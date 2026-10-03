@@ -68,6 +68,25 @@
   .bar > span { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--sun), var(--heat)); transition:width .8s; }
   .note { font-size:13px; color:var(--mute); margin-top:8px; }
 
+  /* Remote on/off */
+  .ctl { display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap; }
+  .btn { font:inherit; font-size:15px; font-weight:600; border-radius:999px; padding:9px 20px; cursor:pointer;
+         border:1px solid var(--line); background:var(--card2); color:var(--fg); }
+  .btn.on { background:var(--green); border-color:var(--green); color:#06210f; }
+  .btn.off { background:transparent; border-color:rgba(239,68,68,.6); color:#f87171; }
+  .btn:disabled { opacity:.45; cursor:not-allowed; }
+  .ctl .msg { font-size:13px; color:var(--mute); }
+  .ctl .msg.err { color:#f87171; }
+  dialog { background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:16px; padding:20px;
+           width:min(360px, calc(100vw - 32px)); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  dialog h3 { font-size:18px; font-weight:600; margin-bottom:6px; }
+  dialog p { font-size:14px; color:var(--mute); margin-bottom:12px; }
+  dialog input[type=password] { width:100%; font:inherit; font-size:16px; padding:10px 12px; border-radius:10px;
+           border:1px solid var(--line); background:var(--bg); color:var(--fg); }
+  dialog .err { color:#f87171; font-size:13px; min-height:18px; margin-top:6px; }
+  dialog .row { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+
   /* Charts */
   .tabs { display:flex; gap:6px; }
   .tabs button { font:inherit; font-size:14px; color:var(--mute); background:var(--card2); border:1px solid var(--line);
@@ -183,6 +202,22 @@
   </div>
 </section>
 
+{% if control %}
+<dialog id="ctlDialog">
+  <form id="ctlForm" method="dialog">
+    <h3 id="ctlTitle">Turn the aircon on?</h3>
+    <p>Enter the control password. The aircon changes within about 15 seconds.</p>
+    <input type="text" name="username" value="octagon-aircon" autocomplete="username" hidden>
+    <input type="password" id="ctlPw" autocomplete="current-password" placeholder="Password" required>
+    <div class="err" id="ctlErr" role="alert"></div>
+    <div class="row">
+      <button type="button" class="btn" id="ctlCancel">Cancel</button>
+      <button type="submit" class="btn on" id="ctlGo">Turn on</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+
 <nav class="tabbar" aria-label="Sections">
   <a href="#units" data-sec="units" aria-current="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="8" rx="2"/><path d="M7 18c1 1.5-1 3 0 4M12 18c1 1.5-1 3 0 4M17 18c1 1.5-1 3 0 4"/></svg>Now</a>
@@ -198,6 +233,7 @@
 (function () {
   "use strict";
   const UNIT_LIST = {{ unit_list | tojson }};  // ordered [key, label] pairs
+  const CONTROL = {{ control | tojson }};       // on/off button enabled on the server
   const ROOMS = Object.fromEntries(UNIT_LIST);
   const PALETTE = ["var(--unit1)", "var(--unit2)", "var(--green)", "var(--sun)"];
   const ROOM_COLOR = Object.fromEntries(UNIT_LIST.map(([k], i) => [k, PALETTE[i % PALETTE.length]]));
@@ -272,8 +308,10 @@
         <div class="power" hidden><div style="display:flex;justify-content:space-between;font-size:14px">
             <span>Compressor power</span><span class="kw" style="font-variant-numeric:tabular-nums">—</span></div>
             <div class="bar"><span></span></div>
-            <div class="note kwh" style="margin-top:6px"></div></div>`;
+            <div class="note kwh" style="margin-top:6px"></div></div>
+        ${CONTROL ? `<div class="ctl"><button class="btn toggle" type="button" disabled>—</button><span class="msg" aria-live="polite"></span></div>` : ""}`;
       box.appendChild(card);
+      if (CONTROL) card.querySelector(".toggle").addEventListener("click", () => askControl(room));
     }
   }
 
@@ -318,6 +356,8 @@
     if (u.swing_mode) chips.push(`<span class="chip">Swing ${u.swing_mode.toLowerCase()}</span>`);
     card.querySelector(".extra").innerHTML = chips.join("");
 
+    if (CONTROL) renderControl(room, u);
+
     const hasPower = u.compressor_kw != null || u.energy_today_kwh != null;
     card.querySelector(".power").hidden = !hasPower;
     if (hasPower) {
@@ -326,6 +366,96 @@
       card.querySelector(".bar > span").style.width = kw != null ? `${Math.min(100, kw / 2 * 100)}%` : "0";
       card.querySelector(".kwh").textContent = u.energy_today_kwh != null ? `${fmt(u.energy_today_kwh, 1)} kWh used today` : "";
     }
+  }
+
+  /* ---------------- remote on/off ---------------- */
+  // The page queues the command on pignus; noisy collects it within ~10 s,
+  // switches the unit and pushes its new state straight back.
+  const pending = {};  // room -> {id, action, since}
+
+  function isOn(u) { return !!u && !!u.hvac_mode && u.hvac_mode !== "off"; }
+
+  function renderControl(room, u) {
+    const card = $("unit-" + room);
+    const btn = card.querySelector(".toggle"), msg = card.querySelector(".msg");
+    const p = pending[room];
+    if (p && u && isOn(u) === (p.action === "on")) {
+      delete pending[room];
+      msg.className = "msg"; msg.textContent = `Turned ${p.action} ✓`;
+      setTimeout(() => { if (!pending[room] && msg.textContent.endsWith("✓")) msg.textContent = ""; }, 8000);
+    }
+    const on = isOn(u);
+    const offline = !current || current.stale || !u || u.available === false;
+    btn.textContent = pending[room] ? "Working…" : on ? "Turn off" : "Turn on";
+    btn.className = "btn toggle " + (on ? "off" : "on");
+    btn.disabled = offline || !!pending[room];
+    btn.dataset.action = on ? "off" : "on";
+    if (offline && !pending[room] && !msg.classList.contains("err")) msg.textContent = "Control unavailable while the aircon is offline";
+    else if (!offline && msg.textContent.startsWith("Control unavailable")) msg.textContent = "";
+  }
+
+  let ctlRoom = null;
+  function askControl(room) {
+    const action = $("unit-" + room).querySelector(".toggle").dataset.action;
+    ctlRoom = room;
+    $("ctlTitle").textContent = `Turn the ${ROOMS[room]} aircon ${action}?`;
+    $("ctlGo").textContent = `Turn ${action}`;
+    $("ctlGo").className = "btn " + action;
+    $("ctlGo").dataset.action = action;
+    $("ctlErr").textContent = "";
+    $("ctlPw").value = "";
+    $("ctlDialog").showModal();
+    $("ctlPw").focus();
+  }
+
+  async function sendControl(ev) {
+    ev.preventDefault();
+    const room = ctlRoom, action = $("ctlGo").dataset.action, go = $("ctlGo");
+    go.disabled = true; $("ctlErr").textContent = "";
+    try {
+      const r = await fetch("api/control", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unit: room, action, password: $("ctlPw").value }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { $("ctlErr").textContent = body.error || `Failed (${r.status})`; return; }
+      $("ctlPw").value = "";
+      $("ctlDialog").close();
+      pending[room] = { id: body.id, action, since: Date.now() };
+      const msg = $("unit-" + room).querySelector(".msg");
+      msg.className = "msg"; msg.textContent = "Sent. Waiting for the Octagon to pick it up…";
+      if (current) renderUnit(room, current.units[room]);
+      watchControl(room);
+    } catch (e) {
+      $("ctlErr").textContent = "Couldn't reach the server.";
+    } finally { go.disabled = false; }
+  }
+
+  async function watchControl(room) {
+    const p = pending[room];
+    if (!p) return;
+    const msg = $("unit-" + room).querySelector(".msg");
+    const fail = (text) => {
+      delete pending[room];
+      msg.className = "msg err"; msg.textContent = text;
+      if (current) renderUnit(room, current.units[room]);
+    };
+    if (Date.now() - p.since > 150000) return fail("No change seen. Check the aircon and try again.");
+    try {
+      const r = await fetch("api/control/" + encodeURIComponent(p.id), { cache: "no-store" });
+      if (r.status === 404) return fail("That command is no longer known. Check the aircon and try again.");
+      const st = await r.json();
+      if (st.status === "replaced") return fail("Replaced by a newer command.");
+      if (st.status === "expired") return fail("The Octagon didn't pick it up in time (is its Home Assistant online?).");
+      if (st.status === "collected") msg.textContent = `Switching ${p.action}…`;
+    } catch (e) { /* keep trying */ }
+    await loadCurrent();
+    if (pending[room] === p) setTimeout(() => watchControl(room), 3000);
+  }
+
+  if (CONTROL) {
+    $("ctlForm").addEventListener("submit", sendControl);
+    $("ctlCancel").addEventListener("click", () => $("ctlDialog").close());
   }
 
   /* ---------------- charts ---------------- */

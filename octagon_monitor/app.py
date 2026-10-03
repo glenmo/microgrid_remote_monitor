@@ -12,14 +12,21 @@ the unit is in that mode, even with the compressor stopped. `running` (from
 binary_sensor.octagon_aircon_running, compressor frequency above zero) says
 whether it is really heating or cooling, so history uses that where present.
 
+Remote on/off: the page POSTs to /api/control with a password (scrypt hash in
+OCTAGON_CONTROL_HASH; set it with set_password.sh). pignus can't reach noisy,
+so the command waits here until noisy collects it from /api/command (polled
+every 10 s by Home Assistant, glenmo/octagon_comfort packages/octagon_control.yaml).
+
 Python 3.9 compatible (pignus).
 """
 
 import argparse
+import hashlib
 import hmac
 import logging
 import math
 import os
+import secrets
 import sqlite3
 import threading
 import time
@@ -41,6 +48,13 @@ SAMPLE_GAP_CAP_S = 300  # don't count gaps longer than this as heating/cooling t
 API_KEY = os.environ.get("OCTAGON_API_KEY", "")
 DB_PATH = os.environ.get("OCTAGON_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "octagon.db"))
 SITE_TZ = ZoneInfo(os.environ.get("OCTAGON_TZ", "Australia/Melbourne"))
+# scrypt:<n>:<r>:<p>:<salt hex>:<hash hex>, written by set_password.sh. Empty disables control.
+CONTROL_HASH = os.environ.get("OCTAGON_CONTROL_HASH", "")
+
+COMMAND_TTL_S = 120       # a command noisy hasn't collected by then is dropped
+LOCKOUT_FAILS = 5         # wrong passwords from one address before it is locked out
+LOCKOUT_S = 15 * 60
+GLOBAL_FAILS_PER_H = 30   # wrong passwords from everyone before control is paused
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
@@ -92,6 +106,10 @@ def init_db():
                 available INTEGER,
                 PRIMARY KEY (ts, unit)
             );
+            CREATE TABLE IF NOT EXISTS controls (
+                ts INTEGER NOT NULL, ip TEXT, unit TEXT, action TEXT,
+                result TEXT NOT NULL, cmd_id TEXT
+            );
             """
         )
 
@@ -100,6 +118,7 @@ def prune():
     cutoff = int(time.time()) - RETENTION_DAYS * 86400
     with db() as conn:
         conn.execute("DELETE FROM samples WHERE ts < ?", (cutoff,))
+        conn.execute("DELETE FROM controls WHERE ts < ?", (cutoff,))
 
 
 # --------------------------------------------------------------------------- validation
@@ -310,9 +329,150 @@ def api_summary():
     return resp
 
 
+# --------------------------------------------------------------------------- remote control
+
+_commands = {}   # id -> {"unit", "action", "queued", "collected"}
+_fails = {}      # client ip -> [timestamps of wrong passwords]
+_ctl_lock = threading.Lock()
+
+
+def hash_password(password, salt=None):
+    salt = salt or secrets.token_bytes(16)
+    n, r, p = 2 ** 15, 8, 1
+    h = hashlib.scrypt(password.encode(), salt=salt, n=n, r=r, p=p, maxmem=64 * 1024 * 1024, dklen=32)
+    return "scrypt:%d:%d:%d:%s:%s" % (n, r, p, salt.hex(), h.hex())
+
+
+def check_password(password):
+    try:
+        algo, n, r, p, salt, want = CONTROL_HASH.split(":")
+        if algo != "scrypt":
+            return False
+        got = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=int(n), r=int(r), p=int(p),
+                             maxmem=64 * 1024 * 1024, dklen=len(want) // 2)
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(got.hex(), want)
+
+
+def client_ip():
+    # Behind Apache on the same host: its mod_proxy appends the real client last
+    if request.remote_addr in ("127.0.0.1", "::1"):
+        fwd = request.headers.get("X-Forwarded-For", "")
+        if fwd:
+            return fwd.split(",")[-1].strip()[:64]
+    return (request.remote_addr or "?")[:64]
+
+
+def _audit(ip, unit, action, result, cmd_id=None):
+    with db() as conn:
+        conn.execute("INSERT INTO controls (ts, ip, unit, action, result, cmd_id) VALUES (?,?,?,?,?,?)",
+                     (int(time.time()), ip, unit, action, result, cmd_id))
+
+
+def _locked_for(ip, now):
+    """Seconds until this address (or everyone) may try again, 0 if not locked."""
+    recent = [t for t in _fails.get(ip, []) if now - t < LOCKOUT_S]
+    _fails[ip] = recent
+    wait = 0
+    if len(recent) >= LOCKOUT_FAILS:
+        wait = int(recent[-LOCKOUT_FAILS] + LOCKOUT_S - now) + 1
+    everyone = sorted(t for ts in _fails.values() for t in ts if now - t < 3600)
+    if len(everyone) >= GLOBAL_FAILS_PER_H:
+        wait = max(wait, int(everyone[-GLOBAL_FAILS_PER_H] + 3600 - now) + 1)
+    return wait
+
+
+def _expire(now):
+    for cid in [c for c, v in _commands.items() if now - v["queued"] > 3600]:
+        del _commands[cid]
+
+
+def _status(cmd, now):
+    if cmd["collected"]:
+        return "collected"
+    if cmd.get("replaced"):
+        return "replaced"
+    return "expired" if now - cmd["queued"] > COMMAND_TTL_S else "waiting"
+
+
+@app.route("/api/control", methods=["POST"])
+def api_control():
+    """Queue an on/off for noisy. Body: {"unit", "action": "on"|"off", "password"}."""
+    if not CONTROL_HASH:
+        return jsonify({"error": "Remote control isn't set up."}), 503
+    if not request.is_json:  # also makes a cross-site form post fail CORS preflight
+        abort(415)
+    body = request.get_json(silent=True) or {}
+    unit, action, password = body.get("unit"), body.get("action"), body.get("password")
+    if unit not in UNITS or action not in ("on", "off") or not isinstance(password, str) or len(password) > 256:
+        abort(400)
+    ip, now = client_ip(), time.time()
+
+    with _ctl_lock:
+        wait = _locked_for(ip, now)
+    if wait:
+        _audit(ip, unit, action, "locked")
+        return jsonify({"error": "Too many wrong passwords. Try again in %d min." % math.ceil(wait / 60),
+                        "retry_after": wait}), 429
+
+    if not check_password(password):
+        with _ctl_lock:
+            _fails.setdefault(ip, []).append(now)
+        _audit(ip, unit, action, "bad password")
+        log.warning("Wrong control password from %s", ip)
+        return jsonify({"error": "Wrong password."}), 401
+
+    with _ctl_lock:
+        _fails.pop(ip, None)
+        _expire(now)
+        # A newer command for the unit replaces one noisy hasn't collected yet
+        for c in _commands.values():
+            if c["unit"] == unit and not c["collected"]:
+                c["replaced"] = True
+        cid = secrets.token_urlsafe(12)
+        _commands[cid] = {"unit": unit, "action": action, "queued": now, "collected": None}
+    _audit(ip, unit, action, "queued", cid)
+    log.info("Queued %s %s from %s (%s)", unit, action, ip, cid)
+    return jsonify({"id": cid, "status": "waiting", "ttl_s": COMMAND_TTL_S}), 202
+
+
+@app.route("/api/control/<cid>")
+def api_control_status(cid):
+    now = time.time()
+    with _ctl_lock:
+        cmd = _commands.get(cid)
+        if cmd is None:
+            abort(404)
+        out = {"id": cid, "unit": cmd["unit"], "action": cmd["action"], "status": _status(cmd, now),
+               "age_s": int(now - cmd["queued"])}
+    resp = jsonify(out)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/api/command")
+def api_command():
+    """noisy collects pending commands here (X-API-Key). Each is handed out once."""
+    if not _authorised():
+        abort(401)
+    now = time.time()
+    out = []
+    with _ctl_lock:
+        for cid, c in _commands.items():
+            if _status(c, now) == "waiting":
+                c["collected"] = now
+                out.append({"id": cid, "unit": c["unit"], "action": c["action"]})
+    for c in out:
+        _audit("noisy", c["unit"], c["action"], "collected", c["id"])
+    resp = jsonify({"commands": out})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.route("/")
 def index():
-    return render_template("index.html", unit_list=list(UNITS.items()))
+    return render_template("index.html", unit_list=list(UNITS.items()), control=bool(CONTROL_HASH))
 
 
 @app.route("/manifest.webmanifest")
@@ -357,10 +517,17 @@ def main():
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8128)
     p.add_argument("--debug", action="store_true")
+    p.add_argument("--hash-password", action="store_true",
+                   help="read a password on stdin, print its OCTAGON_CONTROL_HASH value and exit")
     args = p.parse_args()
+    if args.hash_password:
+        print(hash_password(input().rstrip("\n")))
+        return
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if not API_KEY:
         log.warning("OCTAGON_API_KEY is not set: pushes will be rejected")
+    if not CONTROL_HASH:
+        log.warning("OCTAGON_CONTROL_HASH is not set: remote on/off is disabled")
     init_db()
     prune()
     app.run(host=args.host, port=args.port, debug=args.debug, use_reloader=False)

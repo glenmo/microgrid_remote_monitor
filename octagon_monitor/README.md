@@ -25,6 +25,24 @@ noisy also sends `running` (`binary_sensor.octagon_aircon_running`, compressor f
 above zero). The page and the hours counts use that, so a unit sitting at temperature shows
 as "resting" and isn't counted as heating.
 
+## Remote on/off (password)
+
+Each unit card has a Turn on / Turn off button. Pressing it asks for the control
+password, then POSTs to `/api/control`. pignus can't reach noisy, so the command waits
+in memory until noisy collects it from `/api/command`. Home Assistant checks every 10 s
+(`packages/octagon_control.yaml` in glenmo/octagon_comfort), switches
+`switch.octagon_aircon_power`, and pushes the new state straight back. A command noisy
+hasn't collected after 2 minutes is dropped, so a late pickup can't flip the unit
+unexpectedly. On/off only: the unit keeps its last mode and setpoint.
+
+- The password is stored only as a scrypt hash, `OCTAGON_CONTROL_HASH` in
+  `/etc/octagon-monitor.env`. Set or change it with `sudo bash set_password.sh`.
+  Without the hash, the button is hidden and `/api/control` returns 503.
+- After 5 wrong passwords an address is locked out for 15 minutes. After 30 wrong
+  passwords from anyone within an hour, control is paused for everyone.
+- Every attempt (queued, bad password, locked, collected) is logged to the `controls`
+  table in the SQLite file, which is kept for 35 days.
+
 ## API
 
 | Endpoint | |
@@ -33,6 +51,9 @@ as "resting" and isn't counted as heating.
 | `GET /api/current` | Latest snapshot, `age_s`, `stale` (no push for over 5 min). |
 | `GET /api/history?hours=24` | Bucketed series (max 720 h, about 360 points): temps, heating/cooling/on fraction, compressor kW. |
 | `GET /api/summary?days=7` | Per local day: hours heating/cooling, kWh, inside min/max. |
+| `POST /api/control` | `{"unit", "action": "on"\|"off", "password"}` from the page. 202 with a command `id`, 401 wrong password, 429 locked out. |
+| `GET /api/control/<id>` | `waiting`, `collected`, `replaced` or `expired`. |
+| `GET /api/command` | noisy collects pending commands. Header `X-API-Key: $OCTAGON_API_KEY`. Each is handed out once. |
 | `GET /healthz` | Liveness plus age of the last push. |
 
 The page is installable on phones like Lodge Comfort (`/manifest.webmanifest`, icons in
@@ -54,6 +75,7 @@ Flask caches templates when it isn't in debug mode, so restart it after editing
 ```bash
 cd ~/microgrid_remote_monitor && git pull --ff-only
 sudo bash octagon_monitor/install.sh            # venv, key in /etc/octagon-monitor.env, systemd unit
+sudo bash octagon_monitor/set_password.sh       # password for the on/off button
 # Apache: add the /octagon/ block from server/monitor.mooramoora.org.au.conf to the live vhost
 sudo apachectl configtest && sudo systemctl reload apache2
 ```

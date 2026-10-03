@@ -1,6 +1,6 @@
 // Octagon Comfort service worker: lets the page open from the home screen and show
 // the last data it saw when the phone is offline. Always tries the network first.
-const CACHE = "octagon-comfort-v1";
+const CACHE = "octagon-comfort-v2";
 const SHELL = ["./", "static/icon.svg", "static/icon-192.png"];
 
 self.addEventListener("install", (event) => {
