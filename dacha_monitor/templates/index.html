@@ -54,7 +54,8 @@
   .units:has(> .unit:only-child) .unit > h2 { grid-column:1 / -1; }
   .units:has(> .unit:only-child) .unit > .art { grid-row:2 / span 3; }
   .flow path { fill:none; stroke-width:3; stroke-linecap:round; stroke-dasharray:6 10; opacity:.9; }
-  .running .flow path { animation:flow 1.4s linear infinite; }
+  .flow { transition:opacity 1.2s; }
+  .running .flow path { animation:flow var(--flowspeed, 1.4s) linear infinite; }
   @keyframes flow { to { stroke-dashoffset:-32; } }
   .fanblade { transform-box:fill-box; transform-origin:center; }
   .running .fanblade { animation:spin var(--fanspeed, 1.2s) linear infinite; }
@@ -242,11 +243,14 @@
       </svg>`;
   }
 
-  function flowPaths(g, color, swing) {
+  // Rebuild only when the look changes, so the 30 s refresh doesn't restart the animation
+  function flowPaths(g, color, swing, n) {
+    const key = `${color}|${swing}|${n}`;
+    if (g.dataset.key === key) return;
+    g.dataset.key = key;
     g.innerHTML = "";
-    const n = 6;
     for (let i = 0; i < n; i++) {
-      const x = 60 + i * 40;
+      const x = 160 + (i - (n - 1) / 2) * 40;
       const tilt = (swing === "Horizontal" || swing === "3D") ? (i - (n - 1) / 2) * 6 : 0;
       el("path", { d: `M${x} 78 q ${8 + tilt / 2} 16 ${tilt} 32 q ${-8 + tilt / 2} 16 ${tilt} 32`, stroke: color,
                    style: `animation-delay:${-i * 0.2}s` }, g);
@@ -278,11 +282,12 @@
   }
 
   // What the unit is really doing: the integration says "heating" in heat mode
-  // even when the compressor has stopped, so `running` decides.
+  // even when the compressor has stopped, so `running` decides (or 0 kW if it's missing).
   function actionOf(u) {
     if (!u.hvac_mode || u.hvac_mode === "off") return "off";
     const a = u.hvac_action || "idle";
-    if ((a === "heating" || a === "cooling") && u.running === false) return "idle";
+    const stopped = u.running === false || (u.running == null && u.compressor_kw != null && u.compressor_kw < 0.05);
+    if ((a === "heating" || a === "cooling") && stopped) return "idle";
     return a;
   }
 
@@ -306,7 +311,16 @@
     rest.textContent = on ? "Reached temperature, resting" : "Off";
     rest.setAttribute("opacity", on && action !== "idle" ? 0 : 1);
     const flow = svg.querySelector(".flow");
-    if (on && action !== "idle") flowPaths(flow, a.color, u.swing_mode); else flow.innerHTML = "";
+    if (on && action !== "idle") {
+      // Fewer, fainter and slower waves at low compressor power; full waves if it isn't reported
+      const kw = u.compressor_kw;
+      const level = kw == null ? 1 : Math.max(0.15, Math.min(1, Math.sqrt(kw / 2)));
+      flowPaths(flow, a.color, u.swing_mode, 2 + Math.round(level * 4));
+      flow.style.opacity = (0.35 + 0.65 * level).toFixed(2);
+      flow.style.setProperty("--flowspeed", `${(2.6 - 1.4 * level).toFixed(2)}s`);
+    } else {
+      flow.style.opacity = 0;
+    }
 
     card.querySelector(".t-in").innerHTML = u.inside_temp != null ? `${fmt(u.inside_temp)}<small>°C</small>` : "—";
     card.querySelector(".t-set").innerHTML = on && u.target_temp != null ? `${fmt(u.target_temp, 1).replace(/\.0$/, "")}<small>°C</small>` : "<small>off</small>";
