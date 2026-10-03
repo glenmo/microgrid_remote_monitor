@@ -21,8 +21,8 @@ it there and to the `units` map in `studio_push.yaml`.
 
 **Heating vs resting.** The Daikin integration reports `hvac_action: heating` whenever
 the unit is in heat mode, even after it reaches its setpoint and the compressor stops.
-noisy also sends `running` (`binary_sensor.studio_aircon_running`, compressor power above
-zero). The page and the hours counts use that, so a unit sitting at temperature shows
+noisy also sends `running` (`binary_sensor.studio_aircon_running`, compressor frequency
+above zero). The page and the hours counts use that, so a unit sitting at temperature shows
 as "resting" and isn't counted as heating.
 
 ## API

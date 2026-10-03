@@ -9,7 +9,7 @@ Only units in UNITS are accepted or served.
 
 The Daikin integration reports hvac_action "heating" or "cooling" whenever
 the unit is in that mode, even with the compressor stopped. `running` (from
-binary_sensor.dacha_aircon_running, compressor power above zero) says
+binary_sensor.dacha_aircon_running, compressor frequency above zero) says
 whether it is really heating or cooling, so history uses that where present.
 
 Python 3.9 compatible (pignus).
