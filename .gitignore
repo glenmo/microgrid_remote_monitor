@@ -24,3 +24,5 @@ comfort_monitor/data/
 
 # Dacha Comfort runtime data (SQLite)
 dacha_monitor/data/
+studio_monitor/data/
+octagon_monitor/data/
