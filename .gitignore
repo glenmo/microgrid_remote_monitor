@@ -21,3 +21,6 @@ Thumbs.db
 
 # Lodge Comfort runtime data (SQLite)
 comfort_monitor/data/
+
+# Dacha Comfort runtime data (SQLite)
+dacha_monitor/data/

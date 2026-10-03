@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dacha">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="static/apple-touch-icon.png">
+<title>Dacha Comfort</title>
+<meta name="description" content="Live aircon status at the Dacha.">
+<link rel="icon" href="static/icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg:#0e1116; --card:#171b22; --card2:#1f2530; --fg:#eef1f5; --mute:#8b95a5; --line:#2a313c;
+    --green:#22c55e; --orange:#f59e0b; --red:#ef4444; --blue:#60a5fa; --sun:#fbbf24;
+    --heat:#fb923c; --cool:#60a5fa; --fan:#94a3b8; --dry:#2dd4bf;
+    --unit1:#a78bfa; --unit2:#f472b6; --outside:#8b95a5;
+  }
+  * { box-sizing:border-box; margin:0; }
+  html { background:var(--bg); }
+  body { background:var(--bg); color:var(--fg); font-family:system-ui, sans-serif; line-height:1.45;
+         max-width:1200px; margin:0 auto; padding:16px; }
+  a { color:var(--blue); }
+  header { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:space-between;
+           padding-bottom:12px; border-bottom:1px solid var(--line); margin-bottom:16px; }
+  header h1 { font-size:26px; font-weight:600; letter-spacing:.2px; }
+  header h1 small { display:block; font-size:14px; font-weight:400; color:var(--mute); }
+  .live { display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--mute);
+          background:var(--card); border:1px solid var(--line); border-radius:999px; padding:6px 12px; }
+  .live i { width:9px; height:9px; border-radius:50%; background:var(--mute); }
+  .live.ok i { background:var(--green); box-shadow:0 0 0 0 rgba(34,197,94,.6); animation:pulse 2s infinite; }
+  .live.stale i { background:var(--orange); }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,.55)} 70%{box-shadow:0 0 0 9px rgba(34,197,94,0)} 100%{box-shadow:0 0 0 0 rgba(34,197,94,0)} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
+  .card h2 { font-size:15px; font-weight:500; color:var(--mute); letter-spacing:.3px; text-transform:uppercase; margin-bottom:12px; }
+  section { margin-bottom:16px; }
+
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .chip { font-size:13px; padding:3px 10px; border-radius:999px; background:var(--card2); border:1px solid var(--line); color:var(--fg); white-space:nowrap; }
+  .chip.heat { border-color:rgba(251,146,60,.5); color:var(--heat); }
+  .chip.cool { border-color:rgba(96,165,250,.5); color:var(--cool); }
+  .chip.warn { border-color:rgba(239,68,68,.5); color:#f87171; }
+
+  /* Unit cards */
+  .units { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; }
+  .unit h2 { display:flex; justify-content:space-between; align-items:center; }
+  .unit h2 b { color:var(--fg); font-size:18px; text-transform:none; letter-spacing:0; font-weight:600; }
+  .unit .art { width:100%; max-width:520px; height:auto; display:block; margin:0 auto; }
+  .units:has(> .unit:only-child) .unit { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:0 24px; align-items:center; }
+  .units:has(> .unit:only-child) .unit > h2 { grid-column:1 / -1; }
+  .units:has(> .unit:only-child) .unit > .art { grid-row:2 / span 3; }
+  .flow path { fill:none; stroke-width:3; stroke-linecap:round; stroke-dasharray:6 10; opacity:.9; }
+  .running .flow path { animation:flow 1.4s linear infinite; }
+  @keyframes flow { to { stroke-dashoffset:-32; } }
+  .fanblade { transform-box:fill-box; transform-origin:center; }
+  .running .fanblade { animation:spin var(--fanspeed, 1.2s) linear infinite; }
+  .readings { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; margin-top:12px; }
+  .reading { background:var(--card2); border-radius:12px; padding:10px 12px; }
+  .reading .v { font-size:28px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .reading .v small { font-size:15px; color:var(--mute); font-weight:400; }
+  .reading .k { font-size:13px; color:var(--mute); }
+  .power { margin-top:10px; background:var(--card2); border-radius:12px; padding:10px 12px; }
+  .bar { height:10px; border-radius:999px; background:var(--line); overflow:hidden; margin-top:6px; }
+  .bar > span { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--sun), var(--heat)); transition:width .8s; }
+  .note { font-size:13px; color:var(--mute); margin-top:8px; }
+
+  /* Charts */
+  .tabs { display:flex; gap:6px; }
+  .tabs button { font:inherit; font-size:14px; color:var(--mute); background:var(--card2); border:1px solid var(--line);
+                 border-radius:999px; padding:4px 12px; cursor:pointer; }
+  .tabs button[aria-pressed="true"] { color:var(--fg); border-color:var(--mute); }
+  .charthead { display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .legend { display:flex; flex-wrap:wrap; gap:12px; font-size:13px; color:var(--mute); }
+  .legend span::before { content:""; display:inline-block; width:14px; height:3px; border-radius:2px; vertical-align:middle;
+                         margin-right:6px; background:var(--c); }
+  .legend span.dash::before { background:repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+  .legend span.box::before { height:10px; width:10px; }
+  .chart { position:relative; }
+  .chart svg { width:100%; height:auto; display:block; overflow:visible; }
+  .chart .axis text { fill:var(--mute); font-size:11px; }
+  .chart .grid line { stroke:var(--line); }
+  .tip { position:absolute; pointer-events:none; background:#0b0e12; border:1px solid var(--line); border-radius:8px;
+         padding:6px 9px; font-size:12px; white-space:nowrap; transform:translate(-50%, -110%); display:none; z-index:2; }
+  .tip b { display:block; color:var(--mute); font-weight:500; margin-bottom:2px; }
+  .empty { color:var(--mute); font-size:14px; padding:24px 0; text-align:center; }
+  .chartblock + .chartblock { margin-top:18px; }
+  .chartblock h4 { font-size:14px; font-weight:500; margin-bottom:4px; }
+
+  .chart svg { touch-action:pan-y; -webkit-user-select:none; user-select:none; }
+  section[id] { scroll-margin-top:72px; }
+  .tabbar { display:none; }
+
+  @media (max-width: 760px) {
+    body { padding:0 12px calc(84px + env(safe-area-inset-bottom)); }
+    header { position:sticky; top:0; z-index:5; background:var(--bg); margin:0 -12px 12px; padding:calc(10px + env(safe-area-inset-top)) 12px 10px;
+             flex-wrap:nowrap; }
+    header h1 { font-size:20px; }
+    header h1 small { font-size:12px; }
+    header .back { display:none; }
+    .live { padding:5px 10px; font-size:13px; }
+    .card { padding:14px; border-radius:14px; }
+    section { margin-bottom:12px; }
+    .units { grid-template-columns:1fr; gap:12px; }
+    .unit .art { max-height:120px; }
+    .units:has(> .unit:only-child) .unit { display:block; }
+    .readings { gap:8px; }
+    .reading { padding:8px 10px; }
+    .reading .v { font-size:22px; }
+    .charthead { position:sticky; top:calc(56px + env(safe-area-inset-top)); z-index:4; background:var(--card); margin:-4px -14px 8px; padding:6px 14px; }
+    .tabs { width:100%; }
+    .tabs button { flex:1; padding:7px 0; }
+    .tip { font-size:13px; }
+    .tabbar { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:10; background:rgba(14,17,22,.94);
+              -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); border-top:1px solid var(--line);
+              padding:6px 8px calc(6px + env(safe-area-inset-bottom)); }
+    .tabbar a { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 0; font-size:12px;
+                color:var(--mute); text-decoration:none; border-radius:10px; }
+    .tabbar a svg { width:24px; height:24px; }
+    .tabbar a[aria-current="true"] { color:var(--fg); background:var(--card2); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation:none !important; transition:none !important; }
+  }</style>
+</head>
+<body>
+<header>
+  <h1>Dacha Comfort <small>Moora Moora · the Dacha's aircon</small></h1>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span class="live" id="live"><i></i><span id="liveText">Connecting…</span></span>
+    <a href="/" class="chip back" style="text-decoration:none">← Microgrid monitor</a>
+  </div>
+</header>
+
+<!-- Units -->
+<section class="units" id="units"></section>
+
+<!-- History -->
+<section class="card" id="history">
+  <div class="charthead">
+    <h2 style="margin:0">History</h2>
+    <div class="tabs" role="group" aria-label="Time range">
+      <button data-h="24" aria-pressed="true">24 hours</button>
+      <button data-h="168" aria-pressed="false">7 days</button>
+      <button data-h="720" aria-pressed="false">30 days</button>
+    </div>
+  </div>
+
+  <div class="chartblock">
+    <h4>Temperature</h4>
+    <div class="legend" id="tempLegend"></div>
+    <div class="chart" id="cTemp"></div>
+  </div>
+
+  <div class="chartblock">
+    <h4>Heating &amp; cooling activity</h4>
+    <div class="legend">
+      <span style="--c:var(--heat)" class="box">Heating</span>
+      <span style="--c:var(--cool)" class="box">Cooling</span>
+      <span style="--c:var(--fan)" class="box">On, resting</span>
+    </div>
+    <div class="chart" id="cActivity"></div>
+  </div>
+
+  <div class="chartblock">
+    <h4>Compressor power <span style="color:var(--mute);font-weight:400">(estimated by the unit)</span></h4>
+    <div class="legend" id="powerLegend"></div>
+    <div class="chart" id="cPower"></div>
+  </div>
+
+  <div class="chartblock">
+    <h4>Daily use, last 7 days</h4>
+    <div class="legend">
+      <span style="--c:var(--heat)" class="box">Hours heating</span>
+      <span style="--c:var(--cool)" class="box">Hours cooling</span>
+    </div>
+    <div class="legend" id="dailyUnits" style="margin-top:4px"></div>
+    <div class="chart" id="cDaily"></div>
+    <p class="note">Hours count only while the compressor is running. A unit set to heat that has reached its temperature rests and isn't counted. kWh figures above the bars are measured by the unit itself.</p>
+  </div>
+</section>
+
+<nav class="tabbar" aria-label="Sections">
+  <a href="#units" data-sec="units" aria-current="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="8" rx="2"/><path d="M7 18c1 1.5-1 3 0 4M12 18c1 1.5-1 3 0 4M17 18c1 1.5-1 3 0 4"/></svg>Now</a>
+  <a href="#history" data-sec="history">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>History</a>
+</nav>
+
+<footer>
+  Data from Home Assistant at the Dacha, updated every minute · part of the <a href="/">Wombat Hollow Microgrid monitor</a>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  const UNIT_LIST = {{ unit_list | tojson }};  // ordered [key, label] pairs
+  const ROOMS = Object.fromEntries(UNIT_LIST);
+  const PALETTE = ["var(--unit1)", "var(--unit2)", "var(--green)", "var(--sun)"];
+  const ROOM_COLOR = Object.fromEntries(UNIT_LIST.map(([k], i) => [k, PALETTE[i % PALETTE.length]]));
+  const ACTION = {
+    heating: { label: "Heating", color: "var(--heat)", cls: "heat" },
+    cooling: { label: "Cooling", color: "var(--cool)", cls: "cool" },
+    fan:     { label: "Fan",     color: "var(--fan)",  cls: "" },
+    drying:  { label: "Drying",  color: "var(--dry)",  cls: "" },
+    idle:    { label: "Resting", color: "var(--mute)", cls: "" },
+    off:     { label: "Off",     color: "var(--mute)", cls: "" },
+  };
+  const MODE = { heat: "Heat", cool: "Cool", heat_cool: "Auto", dry: "Dry", fan_only: "Fan only", off: "Off" };
+  const FAN_SPEED = { Quiet: "2.4s", "1": "2s", "2": "1.6s", "3": "1.2s", "4": "0.9s", "5": "0.6s", Auto: "1.2s" };
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+  const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v)) ? "—" : Number(v).toFixed(d);
+  let current = null;
+
+  function el(tag, attrs, parent) {
+    const n = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  /* ---------------- unit cards ---------------- */
+  function unitArt(room) {
+    return `
+      <svg class="art" viewBox="0 0 320 150" aria-hidden="true">
+        <rect x="20" y="10" width="280" height="62" rx="14" fill="#e8ebf0"/>
+        <rect x="20" y="10" width="280" height="62" rx="14" fill="url(#sheen-${room})"/>
+        <defs><linearGradient id="sheen-${room}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+        <rect x="34" y="56" width="252" height="8" rx="4" fill="#a3aab5"/>
+        <g class="louvre"><rect x="40" y="62" width="240" height="6" rx="3" fill="#cfd4dc"/></g>
+        <circle class="led" cx="270" cy="26" r="5" fill="#9ca3af"/>
+        <g transform="translate(46 22)"><circle r="13" cx="13" cy="13" fill="#d7dbe2"/>
+          <g class="fanblade"><path d="M13 13 L13 2 A11 11 0 0 1 22 9 Z M13 13 L24 15 A11 11 0 0 1 17 23 Z M13 13 L7 23 A11 11 0 0 1 2 12 Z" fill="#8a93a0"/></g></g>
+        <text class="disp" x="160" y="40" text-anchor="middle" font-size="20" font-weight="700" fill="#4b5563" font-family="system-ui">--</text>
+        <g class="flow"></g>
+        <text class="rest" x="160" y="118" text-anchor="middle" font-size="14" fill="var(--mute)" font-family="system-ui">Resting</text>
+      </svg>`;
+  }
+
+  function flowPaths(g, color, swing) {
+    g.innerHTML = "";
+    const n = 6;
+    for (let i = 0; i < n; i++) {
+      const x = 60 + i * 40;
+      const tilt = (swing === "Horizontal" || swing === "3D") ? (i - (n - 1) / 2) * 6 : 0;
+      el("path", { d: `M${x} 78 q ${8 + tilt / 2} 16 ${tilt} 32 q ${-8 + tilt / 2} 16 ${tilt} 32`, stroke: color,
+                   style: `animation-delay:${-i * 0.2}s` }, g);
+    }
+  }
+
+  function buildUnits() {
+    const box = $("units");
+    box.innerHTML = "";
+    for (const room in ROOMS) {
+      const card = document.createElement("article");
+      card.className = "card unit";
+      card.id = "unit-" + room;
+      card.innerHTML = `
+        <h2><b>${ROOMS[room]}</b><span class="chip state">—</span></h2>
+        ${unitArt(room)}
+        <div class="readings">
+          <div class="reading"><div class="v t-in">—</div><div class="k">Inside</div></div>
+          <div class="reading"><div class="v t-set">—</div><div class="k">Set to</div></div>
+          <div class="reading"><div class="v t-out">—</div><div class="k">Outside</div></div>
+        </div>
+        <div class="chips extra"></div>
+        <div class="power" hidden><div style="display:flex;justify-content:space-between;font-size:14px">
+            <span>Compressor power</span><span class="kw" style="font-variant-numeric:tabular-nums">—</span></div>
+            <div class="bar"><span></span></div>
+            <div class="note kwh" style="margin-top:6px"></div></div>`;
+      box.appendChild(card);
+    }
+  }
+
+  // What the unit is really doing: the integration says "heating" in heat mode
+  // even when the compressor has stopped, so `running` decides.
+  function actionOf(u) {
+    if (!u.hvac_mode || u.hvac_mode === "off") return "off";
+    const a = u.hvac_action || "idle";
+    if ((a === "heating" || a === "cooling") && u.running === false) return "idle";
+    return a;
+  }
+
+  function renderUnit(room, u) {
+    const card = $("unit-" + room);
+    if (!card) return;
+    if (!u) { card.querySelector(".state").textContent = "No data"; return; }
+    const action = actionOf(u);
+    const a = ACTION[action] || ACTION.idle;
+    const on = action !== "off";
+    const state = card.querySelector(".state");
+    state.textContent = u.available === false ? "Unavailable" : on ? `${MODE[u.hvac_mode] || u.hvac_mode} · ${a.label}` : "Off";
+    state.className = "chip state " + (on ? a.cls : "");
+    card.classList.toggle("running", on);
+    card.style.setProperty("--fanspeed", FAN_SPEED[u.fan_mode] || "1.2s");
+    const svg = card.querySelector(".art");
+    svg.querySelector(".led").setAttribute("fill", on ? a.color : "#9ca3af");
+    svg.querySelector(".disp").textContent = on && u.target_temp != null ? `${fmt(u.target_temp, 1).replace(/\.0$/, "")}°` : "--";
+    svg.querySelector(".louvre").setAttribute("transform", on ? "translate(0 5)" : "");
+    const rest = svg.querySelector(".rest");
+    rest.textContent = on ? "Reached temperature, resting" : "Off";
+    rest.setAttribute("opacity", on && action !== "idle" ? 0 : 1);
+    const flow = svg.querySelector(".flow");
+    if (on && action !== "idle") flowPaths(flow, a.color, u.swing_mode); else flow.innerHTML = "";
+
+    card.querySelector(".t-in").innerHTML = u.inside_temp != null ? `${fmt(u.inside_temp)}<small>°C</small>` : "—";
+    card.querySelector(".t-set").innerHTML = on && u.target_temp != null ? `${fmt(u.target_temp, 1).replace(/\.0$/, "")}<small>°C</small>` : "<small>off</small>";
+    card.querySelector(".t-out").innerHTML = u.outside_temp != null ? `${fmt(u.outside_temp)}<small>°C</small>` : "—";
+
+    const chips = [];
+    if (u.humidity != null) chips.push(`<span class="chip">💧 ${fmt(u.humidity, 0)} % humidity</span>`);
+    if (u.fan_mode) chips.push(`<span class="chip">Fan ${u.fan_mode}</span>`);
+    if (u.swing_mode) chips.push(`<span class="chip">Swing ${u.swing_mode.toLowerCase()}</span>`);
+    card.querySelector(".extra").innerHTML = chips.join("");
+
+    const hasPower = u.compressor_kw != null || u.energy_today_kwh != null;
+    card.querySelector(".power").hidden = !hasPower;
+    if (hasPower) {
+      const kw = u.compressor_kw;
+      card.querySelector(".kw").textContent = kw != null ? `${fmt(kw, 2)} kW` : "—";
+      card.querySelector(".bar > span").style.width = kw != null ? `${Math.min(100, kw / 2 * 100)}%` : "0";
+      card.querySelector(".kwh").textContent = u.energy_today_kwh != null ? `${fmt(u.energy_today_kwh, 1)} kWh used today` : "";
+    }
+  }
+
+  /* ---------------- charts ---------------- */
+  // Charts are drawn at the container's real pixel width so text stays legible on phones
+  let W = 1000;
+  const PAD = { l: 40, r: 12, t: 10, b: 24 };
+  const narrow = () => W < 560;
+  const sizeTo = (host) => { W = Math.max(280, Math.round(host.clientWidth || 1000)); };
+
+  function timeTicks(start, end) {
+    const span = end - start, out = [];
+    const step = span <= 86400 * 1.1 ? (narrow() ? 6 : 3) * 3600
+               : span <= 8 * 86400 ? (narrow() ? 2 : 1) * 86400 : (narrow() ? 10 : 5) * 86400;
+    const d = new Date(start * 1000);
+    d.setMinutes(0, 0, 0);
+    if (step >= 86400) d.setHours(0);
+    let t = d.getTime() / 1000;
+    while (t < start) t += step;
+    for (; t <= end; t += step) out.push(t);
+    return out;
+  }
+  function tickLabel(t, span) {
+    const d = new Date(t * 1000);
+    return span <= 86400 * 1.1 ? d.toLocaleTimeString([], { hour: "numeric" })
+                               : d.toLocaleDateString([], { weekday: "short", day: "numeric" });
+  }
+
+  function frame(host, H, start, end, yMin, yMax, yTicks, yFmt) {
+    host.innerHTML = "";
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, host);
+    const x = (t) => PAD.l + (t - start) / (end - start) * (W - PAD.l - PAD.r);
+    const y = (v) => PAD.t + (1 - (v - yMin) / (yMax - yMin)) * (H - PAD.t - PAD.b);
+    const grid = el("g", { class: "grid" }, svg), axis = el("g", { class: "axis" }, svg);
+    for (const v of yTicks) {
+      el("line", { x1: PAD.l, x2: W - PAD.r, y1: y(v), y2: y(v) }, grid);
+      const t = el("text", { x: PAD.l - 6, y: y(v) + 4, "text-anchor": "end" }, axis);
+      t.textContent = yFmt(v);
+    }
+    for (const tt of timeTicks(start, end)) {
+      const t = el("text", { x: x(tt), y: H - 6, "text-anchor": "middle" }, axis);
+      t.textContent = tickLabel(tt, end - start);
+    }
+    return { svg, x, y, H, W };
+  }
+
+  function linePath(points, x, y, gapS) {
+    let d = "", prevT = null;
+    for (const [t, v] of points) {
+      if (v === null || v === undefined) { prevT = null; continue; }
+      d += (prevT === null || t - prevT > gapS ? "M" : "L") + x(t).toFixed(1) + " " + y(v).toFixed(1) + " ";
+      prevT = t;
+    }
+    return d;
+  }
+
+  function hover(host, f, start, end, rowsFor) {
+    const tip = document.createElement("div");
+    tip.className = "tip";
+    host.appendChild(tip);
+    const cross = el("line", { y1: PAD.t, y2: f.H - PAD.b, stroke: "var(--mute)", "stroke-dasharray": "3 3", opacity: 0 }, f.svg);
+    const move = (ev) => {
+      const box = f.svg.getBoundingClientRect();
+      const px = (ev.clientX - box.left) / box.width * f.W;
+      const t = start + (px - PAD.l) / (f.W - PAD.l - PAD.r) * (end - start);
+      const res = rowsFor(t);
+      if (!res) { tip.style.display = "none"; cross.setAttribute("opacity", 0); return; }
+      cross.setAttribute("x1", f.x(res.t)); cross.setAttribute("x2", f.x(res.t)); cross.setAttribute("opacity", 0.7);
+      tip.innerHTML = `<b>${new Date(res.t * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</b>${res.html}`;
+      tip.style.display = "block";
+      const left = (f.x(res.t) / f.W) * box.width;
+      tip.style.left = `${Math.min(box.width - 70, Math.max(70, left))}px`;
+      tip.style.top = `${(PAD.t / f.H) * box.height + 8}px`;
+    };
+    const hide = () => { tip.style.display = "none"; cross.setAttribute("opacity", 0); };
+    let hideTimer = null;
+    f.svg.addEventListener("pointermove", move);
+    f.svg.addEventListener("pointerdown", (ev) => { clearTimeout(hideTimer); move(ev); });
+    f.svg.addEventListener("pointerleave", (ev) => { if (ev.pointerType === "mouse") hide(); });
+    f.svg.addEventListener("pointerup", (ev) => { if (ev.pointerType !== "mouse") { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 2500); } });
+  }
+
+  function nearest(rows, t) {
+    if (!rows || !rows.length) return null;
+    let lo = 0, hi = rows.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (rows[m][0] < t) lo = m; else hi = m; }
+    return Math.abs(rows[lo][0] - t) < Math.abs(rows[hi][0] - t) ? rows[lo] : rows[hi];
+  }
+
+  function drawTemp(h) {
+    const host = $("cTemp");
+    sizeTo(host);
+    $("tempLegend").innerHTML = UNIT_LIST.map(([k, label]) => `<span style="--c:${ROOM_COLOR[k]}">${label} inside</span>`).join("")
+      + `<span style="--c:var(--outside)" class="dash">Outside</span>`;
+    const vals = [];
+    for (const r in h.units) for (const row of h.units[r]) for (const i of [1, 2]) if (row[i] != null) vals.push(row[i]);
+    if (!vals.length) { host.innerHTML = `<div class="empty">No temperature history yet. It builds up from the first push.</div>`; return; }
+    const lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
+    const step = hi - lo > 16 ? 5 : hi - lo > 8 ? 2 : 1;
+    const ticks = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
+    const f = frame(host, narrow() ? 220 : 260, h.start, h.end, lo, hi, ticks, (v) => `${v}°`);
+    const gap = h.bucket_s * 3;
+    const outsideRows = [].concat(...Object.values(h.units)).map((r) => [r[0], r[2]]).sort((a, b) => a[0] - b[0]);
+    el("path", { d: linePath(outsideRows, f.x, f.y, gap), fill: "none", stroke: "var(--outside)", "stroke-width": 2, "stroke-dasharray": "5 5" }, f.svg);
+    for (const room in h.units) {
+      el("path", { d: linePath(h.units[room].map((r) => [r[0], r[1]]), f.x, f.y, gap), fill: "none",
+                   stroke: ROOM_COLOR[room], "stroke-width": 2.5, "stroke-linejoin": "round" }, f.svg);
+    }
+    hover(host, f, h.start, h.end, (t) => {
+      let html = "", tt = null;
+      for (const room in h.units) {
+        const r = nearest(h.units[room], t); if (!r) continue; tt = tt || r[0];
+        html += `<div style="color:${ROOM_COLOR[room]}">${ROOMS[room]}: ${fmt(r[1])}°C${r[4] != null ? ` (set ${fmt(r[4], 1)}°)` : ""}</div>`;
+        if (r[2] != null && !html.includes("Outside")) html += `<div style="color:var(--outside)">Outside: ${fmt(r[2])}°C</div>`;
+      }
+      return tt ? { t: tt, html } : null;
+    });
+  }
+
+  function drawActivity(h) {
+    const host = $("cActivity");
+    sizeTo(host);
+    const lanes = Object.keys(ROOMS);
+    const laneH = narrow() ? 30 : 34, H = PAD.t + lanes.length * (laneH + 8) + PAD.b;
+    const f = frame(host, H, h.start, h.end, 0, 1, [], () => "");
+    const bw = Math.max(1, (W - PAD.l - PAD.r) * h.bucket_s / (h.end - h.start)) + 0.6;
+    lanes.forEach((lane, i) => {
+      const top = PAD.t + i * (laneH + 8);
+      el("rect", { x: PAD.l, y: top, width: W - PAD.l - PAD.r, height: laneH, rx: 6, fill: "var(--card2)" }, f.svg);
+      for (const r of h.units[lane] || []) {
+        // Stack from the bottom: heating, cooling, then on-but-resting
+        const rest = Math.max(0, r[7] - r[5] - r[6]);
+        let base = top + laneH;
+        for (const [frac, color, op] of [[r[5], "var(--heat)", 1], [r[6], "var(--cool)", 1], [rest, "var(--fan)", 0.35]]) {
+          if (!(frac > 0)) continue;
+          base -= laneH * frac;
+          el("rect", { x: f.x(r[0]), y: base, width: bw, height: laneH * frac, fill: color, opacity: op }, f.svg);
+        }
+      }
+      const name = ROOMS[lane];
+      el("rect", { x: PAD.l + 4, y: top + laneH / 2 - 9, width: name.length * 6.6 + 10, height: 18, rx: 5, fill: "var(--card)", opacity: 0.85 }, f.svg);
+      el("text", { x: PAD.l + 9, y: top + laneH / 2 + 4, fill: "var(--fg)", "font-size": 11 }, f.svg).textContent = name;
+    });
+    hover(host, f, h.start, h.end, (t) => {
+      let html = "", tt = null;
+      for (const room in ROOMS) {
+        const r = nearest(h.units[room], t); if (!r) continue; tt = tt || r[0];
+        const what = r[5] > 0 ? `heating ${Math.round(r[5] * 100)}% of the time` : r[6] > 0 ? `cooling ${Math.round(r[6] * 100)}% of the time` : r[7] > 0 ? "on, resting" : "off";
+        html += `<div>${ROOMS[room]}: ${what}</div>`;
+      }
+      return tt ? { t: tt, html } : null;
+    });
+  }
+
+  function drawPower(h) {
+    const host = $("cPower");
+    sizeTo(host);
+    const series = Object.keys(ROOMS).map((room) => ({ room, rows: (h.units[room] || []).map((r) => [r[0], r[8]]) }))
+                                     .filter((sr) => sr.rows.some((r) => r[1] != null));
+    $("powerLegend").innerHTML = series.map((sr) => `<span style="--c:${ROOM_COLOR[sr.room]}">${ROOMS[sr.room]}</span>`).join("");
+    const max = Math.max(1, ...series.flatMap((sr) => sr.rows.map((r) => r[1] || 0)));
+    const top = Math.ceil(max * 2) / 2;
+    const ticks = []; for (let v = 0; v <= top + 1e-9; v += top > 2 ? 1 : 0.5) ticks.push(v);
+    const f = frame(host, narrow() ? 150 : 170, h.start, h.end, 0, top, ticks, (v) => `${v}kW`);
+    if (!series.length) { el("text", { x: W / 2, y: 80, "text-anchor": "middle", fill: "var(--mute)", "font-size": 13 }, f.svg).textContent = "No power readings yet"; return; }
+    const gap = h.bucket_s * 3;
+    const defs = el("defs", {}, f.svg);
+    for (const sr of series) {
+      const segs = []; let cur = [], prevT = null;
+      for (const [t, v] of sr.rows) {
+        if (v == null || (prevT !== null && t - prevT > gap)) { if (cur.length) segs.push(cur); cur = []; }
+        if (v != null) { cur.push([t, v]); prevT = t; } else prevT = null;
+      }
+      if (cur.length) segs.push(cur);
+      defs.innerHTML += `<linearGradient id="pw-${sr.room}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${ROOM_COLOR[sr.room]}" stop-opacity=".35"/><stop offset="1" stop-color="${ROOM_COLOR[sr.room]}" stop-opacity="0"/></linearGradient>`;
+      for (const s of segs) {
+        const pts = s.map(([t, v]) => `${f.x(t).toFixed(1)} ${f.y(v).toFixed(1)}`);
+        el("path", { d: `M${f.x(s[0][0]).toFixed(1)} ${f.y(0)} L${pts.join(" L")} L${f.x(s[s.length - 1][0]).toFixed(1)} ${f.y(0)} Z`, fill: `url(#pw-${sr.room})` }, f.svg);
+        el("path", { d: `M${pts.join(" L")}`, fill: "none", stroke: ROOM_COLOR[sr.room], "stroke-width": 2 }, f.svg);
+      }
+    }
+    hover(host, f, h.start, h.end, (t) => {
+      let html = "", tt = null;
+      for (const sr of series) { const r = nearest(h.units[sr.room], t); if (!r) continue; tt = tt || r[0]; html += `<div style="color:${ROOM_COLOR[sr.room]}">${ROOMS[sr.room]}: ${fmt(r[8], 2)} kW</div>`; }
+      return tt ? { t: tt, html } : null;
+    });
+  }
+
+  function drawDaily(sum) {
+    const host = $("cDaily");
+    sizeTo(host);
+    const days = sum.days, rooms = Object.keys(ROOMS);
+    let max = 1;
+    for (const r of rooms) for (const d of sum.units[r]) if (d) max = Math.max(max, d.heat_h + d.cool_h);
+    const top = Math.ceil(max);
+    const step = top > 12 ? 4 : top > 6 ? 2 : 1;
+    const ticks = []; for (let v = 0; v <= top; v += step) ticks.push(v);
+    host.innerHTML = "";
+    const H = 220;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, host);
+    const y = (v) => PAD.t + 14 + (1 - v / top) * (H - PAD.t - 14 - PAD.b - 14);
+    const grid = el("g", { class: "grid" }, svg), axis = el("g", { class: "axis" }, svg);
+    for (const v of ticks) { el("line", { x1: PAD.l, x2: W - PAD.r, y1: y(v), y2: y(v) }, grid); el("text", { x: PAD.l - 6, y: y(v) + 4, "text-anchor": "end" }, axis).textContent = `${v}h`; }
+    const slot = (W - PAD.l - PAD.r) / days.length, bw = Math.min(36, Math.max(8, slot / 3 - 2));
+    days.forEach((day, i) => {
+      const cx = PAD.l + slot * (i + 0.5);
+      el("text", { x: cx, y: H - 6, "text-anchor": "middle" }, axis).textContent = new Date(day + "T12:00").toLocaleDateString([], narrow() ? { weekday: "narrow" } : { weekday: "short", day: "numeric" });
+      rooms.forEach((room, j) => {
+        const d = sum.units[room][i] || { heat_h: 0, cool_h: 0 };
+        const x = cx + (j - rooms.length / 2) * (bw + 4) + 2;
+        const yh = y(d.heat_h), yc = y(d.heat_h + d.cool_h);
+        el("rect", { x, y: yh, width: bw, height: y(0) - yh, fill: "var(--heat)", rx: 3 }, svg);
+        if (d.cool_h > 0) el("rect", { x, y: yc, width: bw, height: yh - yc, fill: "var(--cool)", rx: 3 }, svg);
+        el("rect", { x, y: y(0) + 2, width: bw, height: 3, fill: ROOM_COLOR[room] }, svg);
+        if (d.kwh != null) el("text", { x: x + bw / 2, y: yc - 5, "text-anchor": "middle", fill: "var(--mute)", "font-size": 10 }, svg).textContent = narrow() ? fmt(d.kwh, 1) : `${fmt(d.kwh, 1)}kWh`;
+        const tip = el("title", {}, svg.lastChild);
+        tip.textContent = `${ROOMS[room]} ${day}: ${fmt(d.heat_h, 1)} h heating, ${fmt(d.cool_h, 1)} h cooling`;
+      });
+    });
+    $("dailyUnits").innerHTML = rooms.length > 1 ? rooms.map((room) => `<span style="--c:${ROOM_COLOR[room]}">${ROOMS[room]}</span>`).join("") : "";
+  }
+
+  /* ---------------- data loading ---------------- */
+  let hours = 24;
+  async function getJSON(path) {
+    const r = await fetch(path, { cache: "no-store" });
+    if (!r.ok) throw new Error(path + " " + r.status);
+    return r.json();
+  }
+
+  async function loadCurrent() {
+    try {
+      current = await getJSON("api/current");
+      const live = $("live");
+      live.className = "live " + (current.stale ? "stale" : "ok");
+      $("liveText").textContent = current.age_s == null ? "No data yet"
+        : current.stale ? `Last update ${Math.round(current.age_s / 60)} min ago` : "Live";
+      for (const room in ROOMS) renderUnit(room, current.units[room]);
+    } catch (e) {
+      $("live").className = "live stale"; $("liveText").textContent = "Offline";
+    }
+  }
+
+  let lastHistory = null, lastSummary = null;
+  function drawHistory() { if (lastHistory) { drawTemp(lastHistory); drawActivity(lastHistory); drawPower(lastHistory); } }
+  async function loadHistory() {
+    try { lastHistory = await getJSON(`api/history?hours=${hours}`); drawHistory(); }
+    catch (e) { $("cTemp").innerHTML = `<div class="empty">History unavailable.</div>`; }
+  }
+  async function loadSummary() {
+    try { lastSummary = await getJSON("api/summary?days=7"); drawDaily(lastSummary); }
+    catch (e) { $("cDaily").innerHTML = `<div class="empty">Summary unavailable.</div>`; }
+  }
+
+  // Redraw charts at the new width after rotation/resize
+  let lastWidth = 0, resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const w = $("cTemp").clientWidth;
+      if (Math.abs(w - lastWidth) < 8) return;
+      lastWidth = w; drawHistory(); if (lastSummary) drawDaily(lastSummary);
+    }, 200);
+  });
+
+  // When the app comes back to the foreground (e.g. reopened from the home screen), refresh at once
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { loadCurrent(); loadHistory(); loadSummary(); }
+  });
+
+  // Bottom tab bar: highlight the section in view
+  const tabs = [...document.querySelectorAll(".tabbar a")];
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) tabs.forEach((a) => a.setAttribute("aria-current", String(a.dataset.sec === e.target.id)));
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    ["units", "history"].forEach((id) => io.observe($(id)));
+  }
+
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
+    hours = Number(b.dataset.h);
+    document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    loadHistory();
+  }));
+
+  buildUnits();
+  loadCurrent(); loadHistory(); loadSummary();
+  setInterval(loadCurrent, 30000);
+  setInterval(loadHistory, 5 * 60000);
+  setInterval(loadSummary, 10 * 60000);
+})();
+</script>
+</body>
+</html>
