@@ -32,6 +32,10 @@ PUBLIC_ROOMS = {
     "lounge": "Lounge",
     "dining_room": "Dining Room",
 }
+# Plug-switched heaters: latest state only (shown on the /kiosk/ page), not stored
+PUBLIC_HEATERS = {
+    "office": "Office",
+}
 RETENTION_DAYS = 35
 MAX_HISTORY_HOURS = 24 * 30
 SAMPLE_GAP_CAP_S = 300  # don't count gaps longer than this as heating/cooling time
@@ -62,6 +66,12 @@ UNIT_FIELDS = {
     "cool_kwh_last_hour": ("cool_kwh_hr", float),
     "managed_by_surplus": ("managed", bool),
     "available": ("available", bool),
+}
+HEATER_FIELDS = {
+    "available": bool,
+    "on": bool,
+    "power_w": float,
+    "managed_by_surplus": bool,
 }
 SURPLUS_FIELDS = {
     "active": bool,
@@ -150,12 +160,20 @@ def clean_payload(raw):
         units[room] = {"name": label}
         for key, (_, kind) in UNIT_FIELDS.items():
             units[room][key] = _coerce(u.get(key), kind)
+    heaters_in = raw.get("heaters") or {}
+    heaters = {}
+    if isinstance(heaters_in, dict):
+        for key, label in PUBLIC_HEATERS.items():
+            h = heaters_in.get(key)
+            if isinstance(h, dict):
+                heaters[key] = {"name": label}
+                heaters[key].update({k: _coerce(h.get(k), kind) for k, kind in HEATER_FIELDS.items()})
     s_in = raw.get("surplus") or {}
     surplus = {k: _coerce(s_in.get(k), kind) for k, kind in SURPLUS_FIELDS.items()} if isinstance(s_in, dict) else {}
     rooms_enabled = s_in.get("rooms_enabled") if isinstance(s_in, dict) else None
     if isinstance(rooms_enabled, dict):
         surplus["rooms_enabled"] = {r: _coerce(rooms_enabled.get(r), bool) for r in PUBLIC_ROOMS}
-    return {"units": units, "surplus": surplus}
+    return {"units": units, "heaters": heaters, "surplus": surplus}
 
 
 # --------------------------------------------------------------------------- routes
@@ -226,6 +244,7 @@ def api_current():
         "stale": age is None or age > 300,
         "units": (payload or {}).get("units", {}),
         "surplus": (payload or {}).get("surplus", {}),
+        "heaters": (payload or {}).get("heaters", {}),
         "rooms": list(PUBLIC_ROOMS.items()),
     })
     resp.headers["Cache-Control"] = "no-store"
