@@ -25,7 +25,7 @@ ever arrives.
 | Endpoint | |
 | --- | --- |
 | `POST /api/push` | Snapshot from LodgyBox. Header `X-API-Key: $COMFORT_API_KEY`. |
-| `GET /api/current` | Latest snapshot, `age_s`, `stale` (no push for over 5 min). Also `heaters` (`PUBLIC_HEATERS`: the Office heater plug, on/off and W), kept in memory only and shown on the /kiosk/ page. |
+| `GET /api/current` | Latest snapshot, `age_s`, `stale` (no push for over 5 min). Also `heaters` (`PUBLIC_HEATERS`: the Office and Lodge Upstairs heater plugs, on/off and W), kept in memory only and shown on the /kiosk/ page. |
 | `GET /api/history?hours=24` | Bucketed series (max 720 h, about 360 points): temps, heating/cooling fraction, Lounge compressor kW, surplus. |
 | `GET /api/summary?days=7` | Per local day: hours heating/cooling, Lounge kWh, inside min/max. |
 | `GET /healthz` | Liveness plus age of the last push. |

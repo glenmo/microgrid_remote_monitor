@@ -35,6 +35,7 @@ PUBLIC_ROOMS = {
 # Plug-switched heaters: latest state only (shown on the /kiosk/ page), not stored
 PUBLIC_HEATERS = {
     "office": "Office",
+    "lodge_upstairs": "Lodge Upstairs",
 }
 RETENTION_DAYS = 35
 MAX_HISTORY_HOURS = 24 * 30
