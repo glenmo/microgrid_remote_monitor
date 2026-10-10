@@ -223,3 +223,24 @@ def test_index_renders(client):
     html = r.get_data(as_text=True)
     assert "Lodge weather" in html and 'fetch(u' in html
     assert '"/api/' not in html  # relative URLs only, so it works under /weather/
+
+
+def test_push_prunes_hourly_whatever_the_minute(client, monkeypatch):
+    fixed = (int(time.time()) // 3600) * 3600 + 30 * 60  # minute :30, never the top of the hour
+    monkeypatch.setattr(wm.time, "time", lambda: fixed)
+    monkeypatch.setattr(wm, "_last_prune", fixed - 2 * 3600)
+    with wm.db() as conn:
+        conn.execute("INSERT INTO samples (ts, ambient) VALUES (?, ?)", (fixed - 40 * 86400, 1.0))
+    assert push(client, reading(ts=fixed - 60)).get_json()["stored"] is True
+    with wm.db() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM samples WHERE ts < ?", (fixed - 35 * 86400,)).fetchone()[0] == 0
+
+
+def test_load_latest_seeds_from_db_at_startup(client):
+    now = int(time.time())
+    with wm.db() as conn:
+        conn.execute("INSERT INTO samples (ts, ambient) VALUES (?, ?)", (now - 300, 15.0))
+    wm.load_latest()
+    assert client.get("/healthz").get_json()["latest_ts"] == now - 300
+    push(client, reading(ts=now - 1200, ambient_c=11.0))  # older than what's stored
+    assert client.get("/api/current").get_json()["readings"]["ambient_c"] == 15.0

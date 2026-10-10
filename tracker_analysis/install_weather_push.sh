@@ -2,37 +2,42 @@
 #
 # Install the Lodge weather pusher on desky (reads tracker_analysis, POSTs to pignus /weather/).
 #
-# Usage:
-#   sudo bash install_weather_push.sh --key <WEATHER_API_KEY from pignus /etc/weather-monitor.env>
-#   sudo bash install_weather_push.sh            # re-install, keeping the existing key
+# Usage (the key is read from stdin, never the command line, which sudo logs):
+#   ssh pignus sudo grep -oP '(?<=WEATHER_API_KEY=).*' /etc/weather-monitor.env | sudo bash install_weather_push.sh
+#   sudo bash install_weather_push.sh < /dev/null   # re-install, keeping the existing key
 #
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="weather-push.service"
 SERVICE_USER="${SUDO_USER:-$USER}"
-ENV_FILE="/etc/weather-push.env"
+ENV_FILE="${WEATHER_PUSH_ENV_FILE:-/etc/weather-push.env}"
+UNIT_DIR="${WEATHER_PUSH_UNIT_DIR:-/etc/systemd/system}"
 KEY=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --key) KEY="$2"; shift 2 ;;
     --user) SERVICE_USER="$2"; shift 2 ;;
     -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
 
+if [[ ! -t 0 ]]; then
+  IFS= read -r KEY || true
+elif [[ ! -f "$ENV_FILE" ]]; then
+  read -rsp "WEATHER_API_KEY (from pignus /etc/weather-monitor.env): " KEY; echo
+fi
 if [[ -n "$KEY" ]]; then
-  umask 077
-  printf 'WEATHER_API_KEY=%s\nWEATHER_PUSH_URL=https://monitor.mooramoora.org.au/weather/api/push\n' "$KEY" > "$ENV_FILE"
+  ( umask 077
+    printf 'WEATHER_API_KEY=%s\nWEATHER_PUSH_URL=https://monitor.mooramoora.org.au/weather/api/push\n' "$KEY" > "$ENV_FILE" )
   chmod 600 "$ENV_FILE"
 elif [[ ! -f "$ENV_FILE" ]]; then
-  echo "No $ENV_FILE yet: pass --key <WEATHER_API_KEY from pignus>" >&2
+  echo "No $ENV_FILE yet: pipe the WEATHER_API_KEY from pignus into this script" >&2
   exit 1
 fi
 
-cat > "/etc/systemd/system/$SERVICE_NAME" <<UNIT
+cat > "$UNIT_DIR/$SERVICE_NAME" <<UNIT
 [Unit]
 Description=Push Meteostation readings to the Lodge weather page
 After=network-online.target

@@ -64,6 +64,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
 
 _latest = {"payload": None}
+_last_prune = 0.0
 _lock = threading.Lock()
 
 
@@ -86,6 +87,8 @@ def init_db():
 
 
 def prune(now):
+    global _last_prune
+    _last_prune = now
     with db() as conn:
         conn.execute("DELETE FROM samples WHERE ts < ?", (int(now - RETENTION_DAYS * 86400),))
 
@@ -100,6 +103,13 @@ def store(payload):
             vals,
         )
         return cur.rowcount == 1
+
+
+def load_latest():
+    """Seed the in-memory latest reading from SQLite (at startup)."""
+    payload = _latest_from_db()
+    with _lock:
+        _latest["payload"] = payload
 
 
 def _latest_from_db():
@@ -243,7 +253,7 @@ def api_push():
         cur = _latest["payload"]
         if cur is None or payload["ts"] >= cur["ts"]:
             _latest["payload"] = payload
-    if stored and int(now) % 3600 < 60:
+    if stored and now - _last_prune >= 3600:
         prune(now)
     return jsonify({"ok": True, "stored": stored})
 
@@ -322,6 +332,7 @@ def main():
         log.warning("WEATHER_API_KEY is not set: pushes will be rejected")
     init_db()
     prune(time.time())
+    load_latest()
     threading.Thread(target=forecast_loop, name="forecast", daemon=True).start()
     app.run(host=args.host, port=args.port, debug=args.debug, use_reloader=False)
 
