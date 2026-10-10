@@ -193,6 +193,30 @@ def api_current():
     return resp
 
 
+@app.route("/api/history")
+def api_history():
+    """Raw readings for the trend chart (one per WebBox mean). ?hours=24 (max 168)."""
+    try:
+        hours = max(1, min(MAX_HISTORY_HOURS, int(request.args.get("hours", 24))))
+    except ValueError:
+        hours = 24
+    end = int(time.time())
+    start = end - hours * 3600
+    cols = list(FIELDS.values())
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT ts, %s FROM samples WHERE ts >= ? ORDER BY ts" % ",".join(cols), (start,)
+        ).fetchall()
+    resp = jsonify({
+        "start": start,
+        "end": end,
+        "columns": ["t"] + list(FIELDS),
+        "rows": [[r["ts"]] + [None if r[c] is None else round(r[c], 2) for c in cols] for r in rows],
+    })
+    resp.headers["Cache-Control"] = "public, max-age=55"
+    return resp
+
+
 @app.route("/healthz")
 def healthz():
     with _lock:

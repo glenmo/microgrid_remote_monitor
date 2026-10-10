@@ -146,3 +146,23 @@ def test_prune_drops_old_rows(client):
     wm.prune(now)
     with wm.db() as conn:
         assert [r[0] for r in conn.execute("SELECT ambient FROM samples")] == [2.0]
+
+
+def test_history_window_and_columns(client):
+    now = int(time.time())
+    for age_min in (30 * 60, 90, 60, 15):  # 30 h ago, then the last 90 min
+        with wm.db() as conn:
+            conn.execute("INSERT INTO samples (ts, ambient, irradiance) VALUES (?, ?, ?)",
+                         (now - age_min * 60, float(age_min), 100.0))
+    body = client.get("/api/history?hours=24").get_json()
+    assert body["columns"] == ["t"] + list(wm.FIELDS)
+    assert [r[0] for r in body["rows"]] == [now - 90 * 60, now - 60 * 60, now - 15 * 60]
+    amb = body["columns"].index("ambient_c")
+    assert body["rows"][0][amb] == 90.0
+    assert body["end"] - body["start"] == 24 * 3600
+
+
+@pytest.mark.parametrize("arg,hours", [("0", 1), ("9999", 168), ("abc", 24), ("", 24)])
+def test_history_hours_clamped(client, arg, hours):
+    body = client.get("/api/history?hours=" + arg).get_json()
+    assert body["end"] - body["start"] == hours * 3600
