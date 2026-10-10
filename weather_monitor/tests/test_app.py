@@ -215,3 +215,11 @@ def test_forecast_route(client, monkeypatch):
     monkeypatch.setattr(wm, "_forecast", {"days": wm.parse_forecast(OM), "fetched_at": 123, "error": None})
     body = client.get("/api/forecast").get_json()
     assert len(body["days"]) == 2 and body["fetched_at"] == 123
+
+
+def test_index_renders(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert "Lodge weather" in html and 'fetch(u' in html
+    assert '"/api/' not in html  # relative URLs only, so it works under /weather/

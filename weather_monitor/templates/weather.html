@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="900">
+<title>Lodge weather</title>
+<style>
+  /* Theme copied from soc_traffic_light/templates/kiosk.html; keep the two in step. */
+  :root { --bg:#0e1116; --card:#171b22; --card2:#1f2530; --fg:#eef1f5; --mute:#8b95a5; --line:#2a313c;
+          --green:#22c55e; --orange:#f59e0b; --red:#ef4444; --blue:#60a5fa; --sun:#fbbf24; }
+  * { box-sizing:border-box; margin:0; }
+  html, body { height:100%; background:var(--bg); color:var(--fg); font-family:system-ui, sans-serif; overflow:hidden; }
+  body { display:grid; grid-template-rows:64px 1fr 30px; padding:16px; gap:14px; }
+  body.fit { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0; }
+  header { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); font-size:30px; }
+  main { display:grid; grid-template-columns:620px 1fr; grid-template-rows:minmax(0,1fr) 360px; gap:14px; min-height:0;
+         grid-template-areas:"now trend" "days days"; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 22px;
+          overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+  .card h2 { font-size:19px; font-weight:500; color:var(--mute); margin-bottom:10px; letter-spacing:.3px;
+             display:flex; align-items:center; gap:10px; }
+  .num { font-variant-numeric:tabular-nums; }
+  .sub { color:var(--mute); font-size:18px; }
+  .stale { opacity:.45; }
+  svg.i { width:24px; height:24px; flex:none; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+  #now { grid-area:now; }
+  .big { font-size:150px; font-weight:300; line-height:1; margin:8px 0 4px; }
+  .big small { font-size:60px; color:var(--mute); }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:auto; }
+  .stat { background:var(--card2); border-radius:12px; padding:12px 16px; }
+  .stat .v { font-size:38px; }
+  .stat .v small { font-size:20px; color:var(--mute); }
+  .stat .l { color:var(--mute); font-size:17px; margin-top:2px; }
+
+  #trend { grid-area:trend; }
+  #chart { flex:1; width:100%; min-height:0; }
+  #chart text { fill:var(--mute); font-size:16px; font-family:system-ui, sans-serif; }
+  #chart .grid { stroke:var(--line); stroke-width:1; }
+  #chart .temp { fill:none; stroke:var(--red); stroke-width:3; stroke-linejoin:round; }
+  #chart .sunarea { fill:var(--sun); fill-opacity:.18; stroke:var(--sun); stroke-opacity:.6; stroke-width:1.5; }
+  .legend { display:flex; gap:22px; font-size:17px; color:var(--mute); }
+  .legend b { display:inline-block; width:22px; height:4px; border-radius:2px; vertical-align:middle; margin-right:8px; }
+
+  #days { grid-area:days; }
+  .week { flex:1; display:grid; grid-template-columns:repeat(7, 1fr); gap:12px; min-height:0; }
+  .day { background:var(--card2); border-radius:12px; padding:12px; display:flex; flex-direction:column;
+         align-items:center; justify-content:space-between; text-align:center; }
+  .day .name { font-size:24px; }
+  .day svg.wx { width:72px; height:72px; }
+  .day .desc { color:var(--mute); font-size:17px; min-height:22px; }
+  .day .t { font-size:34px; }
+  .day .t .lo { color:var(--mute); font-size:26px; }
+  .day .rain { color:var(--blue); font-size:18px; }
+  .day .wind { color:var(--mute); font-size:17px; }
+
+  footer { display:flex; justify-content:space-between; align-items:center; color:var(--mute); font-size:15px; }
+
+  @media (max-width: 900px), (orientation: portrait) {
+    html, body { height:auto; overflow:auto; }
+    body { display:block; }
+    main { display:flex; flex-direction:column; }
+    #chart { height:280px; flex:none; }
+    .big { font-size:96px; }
+    header { font-size:20px; gap:12px; }
+    .card { padding:14px 16px; }
+    .stats { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+    .stat .v { font-size:30px; }
+    .week { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .day svg.wx { width:48px; height:48px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>Lodge weather</div>
+  <div id="clock" class="num"></div>
+</header>
+<main>
+  <section class="card" id="now">
+    <h2><svg class="i" viewBox="0 0 24 24"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>Right now at Moora Moora</h2>
+    <div class="big num" id="amb">—<small>°C</small></div>
+    <div class="sub" id="now-sub">Waiting for the Meteostation</div>
+    <div class="stats">
+      <div class="stat"><div class="v num" id="wind">—</div><div class="l" id="wind-l">Wind</div></div>
+      <div class="stat"><div class="v num" id="hum">—</div><div class="l">Humidity</div></div>
+      <div class="stat"><div class="v num" id="sun">—</div><div class="l" id="sun-l">Sunlight</div></div>
+      <div class="stat"><div class="v num" id="pres">—</div><div class="l">Station pressure</div></div>
+    </div>
+  </section>
+  <section class="card" id="trend">
+    <h2><svg class="i" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/></svg>Last 24 hours
+      <span class="legend" style="margin-left:auto"><span><b style="background:var(--red)"></b>Temperature</span><span><b style="background:var(--sun)"></b>Sunlight</span></span></h2>
+    <svg id="chart"></svg>
+  </section>
+  <section class="card" id="days">
+    <h2><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Next 7 days <span class="sub" id="fc-note" style="margin-left:auto"></span></h2>
+    <div class="week" id="week"></div>
+  </section>
+</main>
+<footer>
+  <div id="upd">Meteostation (SMA Sunny SensorBox), 15-minute readings</div>
+  <div>Forecast: Open-Meteo</div>
+</footer>
+<script>
+const $ = id => document.getElementById(id);
+const nf = u => fetch(u + (u.includes("?") ? "&" : "?") + "_=" + Date.now(), {cache:"no-store"}).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+const fmt = (v, d=0) => v == null ? "—" : Number(v).toFixed(d);
+const hhmm = ts => new Date(ts*1000).toLocaleTimeString("en-AU", {hour:"numeric", minute:"2-digit"});
+
+/* Weather icons copied from soc_traffic_light/templates/kiosk.html; keep the two in step. */
+const CLOUD_HI = "M6.5 15h11a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 7.2 8.2 3.5 3.5 0 0 0 6.5 15z";
+const CLOUD = "M6.5 19h11a4.5 4.5 0 0 0 .6-8.96A6 6 0 0 0 6.3 11.1 4 4 0 0 0 6.5 19z";
+const SUN = (cx,cy,r,ray) => `<circle cx="${cx}" cy="${cy}" r="${r}" stroke="var(--sun)"/>` +
+  [0,45,90,135,180,225,270,315].map(a=>{const c=Math.cos(a*Math.PI/180), s=Math.sin(a*Math.PI/180);
+    return `<path stroke="var(--sun)" d="M${(cx+c*(r+2)).toFixed(1)} ${(cy+s*(r+2)).toFixed(1)}L${(cx+c*(r+2+ray)).toFixed(1)} ${(cy+s*(r+2+ray)).toFixed(1)}"/>`}).join("");
+const WX = {
+  clear:   SUN(12,12,4.5,3),
+  partly:  SUN(8,8,3,2) + `<path d="${CLOUD}" stroke="#cbd5e1" fill="var(--card2)" transform="translate(2 1) scale(.9)"/>`,
+  cloudy:  `<path d="${CLOUD}" stroke="#cbd5e1"/>`,
+  fog:     `<path d="${CLOUD_HI}" stroke="#cbd5e1"/><path d="M5 18h14M7 21h10" stroke="#94a3b8"/>`,
+  drizzle: `<path d="${CLOUD_HI}" stroke="#cbd5e1"/><path d="M8 19v.5M12 19v.5M16 19v.5M10 22v.5M14 22v.5" stroke="var(--blue)"/>`,
+  rain:    `<path d="${CLOUD_HI}" stroke="#cbd5e1"/><path d="M8 18l-1 4M12 18l-1 4M16 18l-1 4" stroke="var(--blue)"/>`,
+  showers: SUN(7,6,2.5,1.5) + `<path d="${CLOUD_HI}" stroke="#cbd5e1" fill="var(--card2)" transform="translate(1.5 1)"/><path d="M9 19l-1 3M13 19l-1 3M17 19l-1 3" stroke="var(--blue)"/>`,
+  snow:    `<path d="${CLOUD_HI}" stroke="#cbd5e1"/><path d="M8 19v3M6.7 20.5h2.6M13 19v3M11.7 20.5h2.6M18 19v3M16.7 20.5h2.6" stroke="#e2e8f0"/>`,
+  storm:   `<path d="${CLOUD_HI}" stroke="#cbd5e1"/><path d="M13 14l-3 4.5h3.5L11 23" stroke="#facc15"/>`,
+};
+const WMO = {0:["clear","Clear"],1:["clear","Mostly clear"],2:["partly","Partly cloudy"],3:["cloudy","Cloudy"],
+  45:["fog","Fog"],48:["fog","Fog"],51:["drizzle","Drizzle"],53:["drizzle","Drizzle"],55:["drizzle","Drizzle"],
+  56:["drizzle","Freezing drizzle"],57:["drizzle","Freezing drizzle"],61:["rain","Light rain"],63:["rain","Rain"],
+  65:["rain","Heavy rain"],66:["rain","Freezing rain"],67:["rain","Freezing rain"],71:["snow","Light snow"],
+  73:["snow","Snow"],75:["snow","Heavy snow"],77:["snow","Snow"],80:["showers","Showers"],81:["showers","Showers"],
+  82:["showers","Heavy showers"],85:["snow","Snow showers"],86:["snow","Snow showers"],95:["storm","Storms"],
+  96:["storm","Storms, hail"],99:["storm","Storms, hail"]};
+const wxIcon = code => `<svg class="i wx" viewBox="0 0 24 24" style="stroke-width:1.6">${WX[(WMO[code]||["cloudy"])[0]]}</svg>`;
+
+const BEAUFORT = [[1,"Calm"],[6,"Light air"],[12,"Light breeze"],[20,"Gentle breeze"],[29,"Moderate breeze"],
+  [39,"Fresh breeze"],[50,"Strong breeze"],[62,"Near gale"],[75,"Gale"],[89,"Strong gale"],[103,"Storm"],
+  [118,"Violent storm"],[Infinity,"Hurricane"]];
+const beaufort = kmh => BEAUFORT.find(([lim]) => kmh < lim)[1];
+
+function tickClock(){
+  $("clock").textContent = new Date().toLocaleString("en-AU", {weekday:"long", day:"numeric", month:"long", hour:"numeric", minute:"2-digit"});
+}
+
+async function pollCurrent(){
+  try {
+    const c = await nf("api/current"), r = c.readings || {};
+    $("now").classList.toggle("stale", !!c.stale);
+    $("amb").innerHTML = `${fmt(r.ambient_c, 1)}<small>°C</small>`;
+    const kmh = r.wind_ms == null ? null : r.wind_ms * 3.6;
+    $("wind").innerHTML = kmh == null ? "—" : `${fmt(kmh)}<small> km/h</small>`;
+    $("wind-l").textContent = kmh == null ? "Wind" : `Wind · ${beaufort(kmh)}`;
+    $("hum").innerHTML = r.humidity_pct == null ? "—" : `${fmt(r.humidity_pct)}<small> %</small>`;
+    $("sun").innerHTML = r.irradiance_wm2 == null ? "—" : `${fmt(r.irradiance_wm2)}<small> W/m²</small>`;
+    $("sun-l").textContent = r.clearness_index == null || !r.irradiance_wm2 ? "Sunlight"
+      : `Sunlight · ${fmt(Math.min(r.clearness_index, 1) * 100)}% of clear sky`;
+    $("pres").innerHTML = r.pressure_hpa == null ? "—" : `${fmt(r.pressure_hpa)}<small> hPa</small>`;
+    $("now-sub").textContent = c.ts == null ? "Waiting for the Meteostation"
+      : (r.module_c == null ? "" : `Solar panels ${fmt(r.module_c)}°C · `) + `measured ${hhmm(c.ts)}` + (c.stale ? " (old reading)" : "");
+    $("upd").textContent = c.ts == null ? "Meteostation: no reading yet" : `Meteostation · updated ${hhmm(c.ts)}`;
+  } catch(e){ console.warn(e); $("now").classList.add("stale"); }
+}
+
+// Split a series into runs of [t, v], breaking at nulls and gaps over 45 min.
+function runs(rows, ti, vi){
+  const out = []; let cur = [], prevT = null;
+  for (const r of rows){
+    const t = r[ti], v = r[vi];
+    if (v == null || (prevT != null && t - prevT > 2700)) { if (cur.length) out.push(cur); cur = []; }
+    if (v != null) cur.push([t, v]);
+    prevT = t;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
+function drawChart(h){
+  const svg = $("chart"), W = svg.clientWidth, H = svg.clientHeight;
+  const L = 56, R = 70, T = 14, B = 34, pw = W - L - R, ph = H - T - B;
+  const ti = h.columns.indexOf("t"), ai = h.columns.indexOf("ambient_c"), si = h.columns.indexOf("irradiance_wm2");
+  const temps = h.rows.map(r => r[ai]).filter(v => v != null);
+  if (!temps.length){
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle">No Meteostation readings in the last 24 hours</text>`;
+    return;
+  }
+  const tLo = Math.floor(Math.min(...temps) - 1), tHi = Math.ceil(Math.max(...temps) + 1);
+  const sHi = Math.max(1000, ...h.rows.map(r => r[si] || 0));
+  const x = t => L + (t - h.start) / (h.end - h.start) * pw;
+  const yT = v => T + (1 - (v - tLo) / (tHi - tLo)) * ph;
+  const yS = v => T + (1 - v / sHi) * ph;
+  let g = "";
+  const step = Math.max(1, Math.ceil((tHi - tLo) / 5));
+  for (let v = tLo; v <= tHi; v += step)
+    g += `<line class="grid" x1="${L}" x2="${L+pw}" y1="${yT(v)}" y2="${yT(v)}"/><text x="${L-10}" y="${yT(v)+5}" text-anchor="end">${v}°</text>`;
+  for (const v of [0, 500, 1000]) if (v <= sHi)
+    g += `<text x="${L+pw+10}" y="${yS(v)+5}">${v}</text>`;
+  g += `<text x="${L+pw+10}" y="${T+ph+28}">W/m²</text>`;
+  for (let t = Math.ceil(h.start/3600)*3600; t <= h.end; t += 3600){
+    const hr = new Date(t*1000).getHours();
+    if (hr % (pw < 900 ? 6 : 3)) continue;
+    g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T+ph}" stroke-dasharray="2 6"/>` +
+         `<text x="${x(t)}" y="${T+ph+26}" text-anchor="middle">${new Date(t*1000).toLocaleTimeString("en-AU",{hour:"numeric"})}</text>`;
+  }
+  for (const run of runs(h.rows, ti, si)){
+    const pts = run.map(([t, v]) => `${x(t).toFixed(1)},${yS(v).toFixed(1)}`).join(" L");
+    g += `<path class="sunarea" d="M${x(run[0][0]).toFixed(1)},${yS(0)} L${pts} L${x(run[run.length-1][0]).toFixed(1)},${yS(0)} Z"/>`;
+  }
+  for (const run of runs(h.rows, ti, ai))
+    g += run.length === 1  // a lone reading (e.g. after a gap) has no line to draw
+      ? `<circle cx="${x(run[0][0]).toFixed(1)}" cy="${yT(run[0][1]).toFixed(1)}" r="5" fill="var(--red)"/>`
+      : `<path class="temp" d="M${run.map(([t, v]) => `${x(t).toFixed(1)},${yT(v).toFixed(1)}`).join(" L")}"/>`;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = g;
+}
+
+let lastHistory = null;
+async function pollHistory(){
+  try { lastHistory = await nf("api/history?hours=24"); drawChart(lastHistory); }
+  catch(e){ console.warn(e); }
+}
+
+async function pollForecast(){
+  try {
+    const f = await nf("api/forecast");
+    const today = new Date().toLocaleDateString("en-CA");  // YYYY-MM-DD, local
+    $("week").innerHTML = (f.days || []).slice(0, 7).map(d => {
+      const name = d.date === today ? "Today"
+        : new Date(d.date + "T12:00:00").toLocaleDateString("en-AU", {weekday:"short", day:"numeric"});
+      const rain = d.rain_pct == null ? "" : `${fmt(d.rain_pct)}%` + (d.rain_mm ? ` · ${fmt(d.rain_mm, d.rain_mm < 10 ? 1 : 0)} mm` : "");
+      const wind = d.wind_kmh == null ? "" : `Wind ${fmt(d.wind_kmh)}` + (d.gust_kmh == null ? "" : `, gusts ${fmt(d.gust_kmh)}`) + " km/h";
+      return `<div class="day"><div class="name">${name}</div>${wxIcon(d.code)}
+        <div class="desc">${(WMO[d.code]||[,""])[1]}</div>
+        <div class="t num">${fmt(d.tmax)}° <span class="lo">${fmt(d.tmin)}°</span></div>
+        <div class="rain num">${rain || "&nbsp;"}</div><div class="wind num">${wind || "&nbsp;"}</div></div>`;
+    }).join("") || `<div class="sub">Forecast not available yet</div>`;
+    $("fc-note").textContent = f.error && f.fetched_at ? `forecast as of ${hhmm(f.fetched_at)}` : "";
+    $("days").classList.toggle("stale", !!f.error);
+  } catch(e){ console.warn(e); $("days").classList.add("stale"); }
+}
+
+// Same 1920x1080 scaling as the kiosk (soc_traffic_light/templates/kiosk.html fitKiosk()).
+const MOBILE = matchMedia("(max-width: 900px), (orientation: portrait)");
+function fitPage(){
+  const b = document.body;
+  if (MOBILE.matches) { b.classList.remove("fit"); b.style.transform = ""; }
+  else {
+    const s = Math.min(innerWidth/1920, innerHeight/1080);
+    b.classList.add("fit");
+    b.style.transform = `translate(${(innerWidth-1920*s)/2}px, ${(innerHeight-1080*s)/2}px) scale(${s})`;
+  }
+  if (lastHistory) drawChart(lastHistory);
+}
+addEventListener("resize", fitPage); fitPage();
+
+tickClock(); setInterval(tickClock, 15000);
+pollCurrent(); setInterval(pollCurrent, 60000);
+pollHistory(); setInterval(pollHistory, 300000);
+pollForecast(); setInterval(pollForecast, 900000);
+</script>
+</body>
+</html>

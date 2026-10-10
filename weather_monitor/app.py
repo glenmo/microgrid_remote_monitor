@@ -299,6 +299,11 @@ def api_forecast():
     return resp
 
 
+@app.route("/")
+def index():
+    return render_template("weather.html")
+
+
 @app.route("/healthz")
 def healthz():
     with _lock:
