@@ -166,3 +166,52 @@ def test_history_window_and_columns(client):
 def test_history_hours_clamped(client, arg, hours):
     body = client.get("/api/history?hours=" + arg).get_json()
     assert body["end"] - body["start"] == hours * 3600
+
+
+OM = {
+    "daily": {
+        "time": ["2026-10-10", "2026-10-11"],
+        "weather_code": [3, 61],
+        "temperature_2m_max": [17.2, 14.0],
+        "temperature_2m_min": [8.1, 9.4],
+        "precipitation_probability_max": [10, 80],
+        "precipitation_sum": [0.0, 6.2],
+        "wind_speed_10m_max": [18.0, 30.5],
+        "wind_gusts_10m_max": [35.0, 61.2],
+    }
+}
+
+
+def test_parse_forecast():
+    days = wm.parse_forecast(OM)
+    assert days[1] == {"date": "2026-10-11", "code": 61, "tmax": 14.0, "tmin": 9.4,
+                       "rain_pct": 80.0, "rain_mm": 6.2, "wind_kmh": 30.5, "gust_kmh": 61.2}
+
+
+def test_parse_forecast_handles_nulls():
+    js = {"daily": {"time": ["2026-10-10"], "weather_code": [None],
+                    "temperature_2m_max": [16.0]}}  # other arrays missing
+    d = wm.parse_forecast(js)[0]
+    assert d["code"] is None and d["tmax"] == 16.0 and d["rain_mm"] is None
+
+
+def test_parse_forecast_rejects_garbage():
+    with pytest.raises(ValueError):
+        wm.parse_forecast({"error": True, "reason": "bad"})
+
+
+def test_refresh_keeps_last_good_on_error(monkeypatch):
+    monkeypatch.setattr(wm, "_forecast", {"days": [], "fetched_at": None, "error": None})
+    assert wm.refresh_forecast(lambda: wm.parse_forecast(OM)) is True
+    good = wm._forecast["days"]
+
+    def boom():
+        raise OSError("timeout")
+    assert wm.refresh_forecast(boom) is False
+    assert wm._forecast["days"] == good and "timeout" in wm._forecast["error"]
+
+
+def test_forecast_route(client, monkeypatch):
+    monkeypatch.setattr(wm, "_forecast", {"days": wm.parse_forecast(OM), "fetched_at": 123, "error": None})
+    body = client.get("/api/forecast").get_json()
+    assert len(body["days"]) == 2 and body["fetched_at"] == 123

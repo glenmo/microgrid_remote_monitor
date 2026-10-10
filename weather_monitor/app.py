@@ -12,12 +12,15 @@ Python 3.9 compatible (pignus).
 
 import argparse
 import hmac
+import json
 import logging
 import math
 import os
 import sqlite3
 import threading
 import time
+import urllib.parse
+import urllib.request
 
 from flask import Flask, abort, jsonify, render_template, request
 
@@ -146,6 +149,76 @@ def clean_payload(raw, now):
     return out
 
 
+# --------------------------------------------------------------------------- forecast
+
+LAT, LON = -37.72, 145.55  # Mount Toolebewong, same as soc_traffic_light/extras.py
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+# Open-Meteo daily variable -> our key. Default model blend: bom_access_global returns nulls here.
+FORECAST_DAILY = {
+    "weather_code": "code",
+    "temperature_2m_max": "tmax",
+    "temperature_2m_min": "tmin",
+    "precipitation_probability_max": "rain_pct",
+    "precipitation_sum": "rain_mm",
+    "wind_speed_10m_max": "wind_kmh",
+    "wind_gusts_10m_max": "gust_kmh",
+}
+FORECAST_REFRESH_S = 15 * 60
+FORECAST_RETRY_S = 2 * 60
+
+_forecast = {"days": [], "fetched_at": None, "error": None}
+
+
+def parse_forecast(js):
+    daily = js.get("daily") if isinstance(js, dict) else None
+    if not isinstance(daily, dict) or not isinstance(daily.get("time"), list):
+        raise ValueError("no daily forecast in response")
+    days = []
+    for i, date in enumerate(daily["time"]):
+        d = {"date": str(date)}
+        for src, key in FORECAST_DAILY.items():
+            arr = daily.get(src) or []
+            v = arr[i] if i < len(arr) else None
+            if key == "code":
+                d[key] = int(v) if isinstance(v, (int, float)) else None
+            else:
+                d[key] = float(v) if isinstance(v, (int, float)) and math.isfinite(v) else None
+        days.append(d)
+    return days
+
+
+def fetch_forecast():
+    q = urllib.parse.urlencode({
+        "latitude": LAT, "longitude": LON,
+        "daily": ",".join(FORECAST_DAILY),
+        "forecast_days": 7, "timezone": "Australia/Melbourne", "wind_speed_unit": "kmh",
+    })
+    req = urllib.request.Request(FORECAST_URL + "?" + q, headers={"User-Agent": "lodge-weather/1"})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return parse_forecast(json.load(resp))
+
+
+def refresh_forecast(fetch=fetch_forecast):
+    """One fetch attempt. On failure keep the last good days and record the error."""
+    global _forecast
+    try:
+        days = fetch()
+    except Exception as exc:
+        log.warning("Forecast fetch failed: %s", exc)
+        with _lock:
+            _forecast = dict(_forecast, error=str(exc)[:200])
+        return False
+    with _lock:
+        _forecast = {"days": days, "fetched_at": int(time.time()), "error": None}
+    return True
+
+
+def forecast_loop():
+    while True:
+        ok = refresh_forecast()
+        time.sleep(FORECAST_REFRESH_S if ok else FORECAST_RETRY_S)
+
+
 # --------------------------------------------------------------------------- routes
 
 def _authorised():
@@ -217,6 +290,15 @@ def api_history():
     return resp
 
 
+@app.route("/api/forecast")
+def api_forecast():
+    with _lock:
+        snap = dict(_forecast)
+    resp = jsonify(snap)
+    resp.headers["Cache-Control"] = "public, max-age=55"
+    return resp
+
+
 @app.route("/healthz")
 def healthz():
     with _lock:
@@ -235,6 +317,7 @@ def main():
         log.warning("WEATHER_API_KEY is not set: pushes will be rejected")
     init_db()
     prune(time.time())
+    threading.Thread(target=forecast_loop, name="forecast", daemon=True).start()
     app.run(host=args.host, port=args.port, debug=args.debug, use_reloader=False)
 
 
