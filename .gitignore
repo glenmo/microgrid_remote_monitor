@@ -26,3 +26,6 @@ comfort_monitor/data/
 dacha_monitor/data/
 studio_monitor/data/
 octagon_monitor/data/
+
+# Lodge Weather runtime data (SQLite)
+weather_monitor/data/
