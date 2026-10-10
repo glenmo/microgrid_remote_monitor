@@ -709,9 +709,13 @@ def engineer_view():
 
 
 # Pages the kiosk display cycles through, with seconds on screen for each:
-# the flow diagram and noisy's EV charger status page (dark theme).
+# the flow diagram, noisy's EV charger status page and noisy's Pi vitals (dark theme).
 # Override with ?url=A&secs=10&url=B&secs=20 (a single secs applies to all).
-ROTATE_PAGES = [("/flow", 10), ("http://192.168.55.6:8090/?theme=dark", 20)]
+ROTATE_PAGES = [
+    ("/flow", 10),
+    ("http://192.168.55.6:8090/?theme=dark", 20),
+    ("http://noisy.local/vitals/?kiosk=1&theme=dark", 20),
+]
 
 
 @app.route("/rotate")

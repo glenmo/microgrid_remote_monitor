@@ -219,7 +219,7 @@ SwitchDin (Stormcloud cloud API — LEGACY, SwitchDin no longer monitors the SP 
 | `GET /` | Combined dashboard (`combined_v2.html`) |
 | `GET /flow` | Live power-flow diagram (`flow_diagram.html`) |
 | `GET /engineer` | Engineer view (`engineer.html`) |
-| `GET /rotate` | Kiosk page: cycles full-screen between `/flow` (10 s) and noisy's EV status page (`http://192.168.55.6:8090/?theme=dark`, 20 s). Override with `?url=A&secs=10&url=B&secs=20` (one `secs` applies to all). rubberduck's kiosk Chromium (`~/.config/labwc/autostart`) opens this page. |
+| `GET /rotate` | Kiosk page: cycles full-screen between `/flow` (10 s), noisy's EV status page (`http://192.168.55.6:8090/?theme=dark`, 20 s) and noisy's Pi vitals dashboard (`http://noisy.local/vitals/?kiosk=1&theme=dark`, 20 s). Override with `?url=A&secs=10&url=B&secs=20` (one `secs` applies to all). rubberduck's kiosk Chromium (`~/.config/labwc/autostart`) opens this page. |
 | `GET /api/data` | Latest Solis data (legacy alias) |
 | `GET /api/history` | Solis 24 h history (legacy alias) |
 | `GET /api/status` | Solis connection status |
