@@ -178,6 +178,7 @@ OM = {
         "precipitation_sum": [0.0, 6.2],
         "wind_speed_10m_max": [18.0, 30.5],
         "wind_gusts_10m_max": [35.0, 61.2],
+        "cloud_cover_mean": [90, 95],
     }
 }
 
@@ -185,7 +186,8 @@ OM = {
 def test_parse_forecast():
     days = wm.parse_forecast(OM)
     assert days[1] == {"date": "2026-10-11", "code": 61, "tmax": 14.0, "tmin": 9.4,
-                       "rain_pct": 80.0, "rain_mm": 6.2, "wind_kmh": 30.5, "gust_kmh": 61.2}
+                       "rain_pct": 80.0, "rain_mm": 6.2, "wind_kmh": 30.5, "gust_kmh": 61.2,
+                       "cloud": 95.0}
 
 
 def test_parse_forecast_handles_nulls():
@@ -193,6 +195,22 @@ def test_parse_forecast_handles_nulls():
                     "temperature_2m_max": [16.0]}}  # other arrays missing
     d = wm.parse_forecast(js)[0]
     assert d["code"] is None and d["tmax"] == 16.0 and d["rain_mm"] is None
+
+
+@pytest.mark.parametrize("code,pct,mm,cloud,want", [
+    (51, 4, 0.4, 35, 1),     # an hour or two of trace drizzle on a sunny day -> mostly sunny
+    (51, 0, 0.2, 8, 0),      # -> sunny
+    (51, 33, 0.3, 55, 2),    # likely-ish but under 1 mm -> partly cloudy
+    (51, 38, 1.2, 31, 51),   # forecast wet -> keep drizzle
+    (63, 80, 6.2, 95, 63),   # rain stays rain
+    (3, 0, 0.0, 11, 0),      # worst-hour "Cloudy" on a clear day -> sunny
+    (3, 0, 0.0, 90, 3),
+    (45, 0, 0.0, 50, 2),     # an hour of fog -> partly cloudy
+    (51, 4, 0.4, None, 51),  # no cloud data: leave the code alone
+    (None, 0, 0.0, 10, None),
+])
+def test_day_code(code, pct, mm, cloud, want):
+    assert wm.day_code(code, pct, mm, cloud) == want
 
 
 def test_parse_forecast_rejects_garbage():

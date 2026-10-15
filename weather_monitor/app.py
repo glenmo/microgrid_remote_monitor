@@ -172,11 +172,22 @@ FORECAST_DAILY = {
     "precipitation_sum": "rain_mm",
     "wind_speed_10m_max": "wind_kmh",
     "wind_gusts_10m_max": "gust_kmh",
+    "cloud_cover_mean": "cloud",
 }
 FORECAST_REFRESH_S = 15 * 60
 FORECAST_RETRY_S = 2 * 60
 
 _forecast = {"days": [], "fetched_at": None, "error": None}
+
+
+def day_code(code, rain_pct, rain_mm, cloud):
+    """Weather code for a day's icon. Open-Meteo's daily weather_code is the worst hour, so one hour
+    of 0.1 mm drizzle makes a sunny day "Drizzle". Keep a wet code only when the day is actually
+    forecast wet (>= 30 % chance and >= 1 mm); otherwise pick from mean cloud cover."""
+    wet = (rain_pct is None or rain_pct >= 30) and rain_mm is not None and rain_mm >= 1
+    if code is None or (code >= 45 and wet) or cloud is None:
+        return code
+    return 0 if cloud < 20 else 1 if cloud < 45 else 2 if cloud < 75 else 3
 
 
 def parse_forecast(js):
@@ -193,6 +204,7 @@ def parse_forecast(js):
                 d[key] = int(v) if isinstance(v, (int, float)) else None
             else:
                 d[key] = float(v) if isinstance(v, (int, float)) and math.isfinite(v) else None
+        d["code"] = day_code(d["code"], d["rain_pct"], d["rain_mm"], d["cloud"])
         days.append(d)
     return days
 

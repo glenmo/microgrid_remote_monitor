@@ -133,6 +133,7 @@ const WMO = {0:["clear","Clear"],1:["clear","Mostly clear"],2:["partly","Partly 
   73:["snow","Snow"],75:["snow","Heavy snow"],77:["snow","Snow"],80:["showers","Showers"],81:["showers","Showers"],
   82:["showers","Heavy showers"],85:["snow","Snow showers"],86:["snow","Snow showers"],95:["storm","Storms"],
   96:["storm","Storms, hail"],99:["storm","Storms, hail"]};
+const DAY_DESC = {0:"Sunny", 1:"Mostly sunny"};  // daytime wording for the 7-day cards
 const wxIcon = code => `<svg class="i wx" viewBox="0 0 24 24" style="stroke-width:1.6">${WX[(WMO[code]||["cloudy"])[0]]}</svg>`;
 
 const BEAUFORT = [[1,"Calm"],[6,"Light air"],[12,"Light breeze"],[20,"Gentle breeze"],[29,"Moderate breeze"],
@@ -231,7 +232,7 @@ async function pollForecast(){
       const rain = d.rain_pct == null ? "" : `${fmt(d.rain_pct)}%` + (d.rain_mm ? ` · ${fmt(d.rain_mm, d.rain_mm < 10 ? 1 : 0)} mm` : "");
       const wind = d.wind_kmh == null ? "" : `Wind ${fmt(d.wind_kmh)}` + (d.gust_kmh == null ? "" : `, gusts ${fmt(d.gust_kmh)}`) + " km/h";
       return `<div class="day"><div class="name">${name}</div>${wxIcon(d.code)}
-        <div class="desc">${(WMO[d.code]||[,""])[1]}</div>
+        <div class="desc">${DAY_DESC[d.code] || (WMO[d.code]||[,""])[1]}</div>
         <div class="t num">${fmt(d.tmax)}° <span class="lo">${fmt(d.tmin)}°</span></div>
         <div class="rain num">${rain || "&nbsp;"}</div><div class="wind num">${wind || "&nbsp;"}</div></div>`;
     }).join("") || `<div class="sub">Forecast not available yet</div>`;
