@@ -79,8 +79,8 @@ The same `combined_v2.html` template is served on both rubberduck and the
 VPS — the only difference is whether the Flask backend is polling Modbus
 directly (rubberduck) or replaying push payloads from the Pi (VPS).
 
-The SP Pro is read by **kitty**, a second Pi cabled to the SP Pro's USB
-comms board. `kitty/sppro_pusher.py` runs the selpi reader over serial and
+The SP Pro is read by **sunny** (kitty until 2026-10-18; the code is still in `kitty/`),
+a second Pi cabled to the SP Pro's USB comms board. `kitty/sppro_pusher.py` runs the selpi reader over serial and
 POSTs each sample to rubberduck's `/api/sppro/ingest`, and rubberduck
 (`--sppro-source push`) serves it like any other reader. See
 `kitty/README.md`. SwitchDin no longer monitors the SP Pro. The SwitchDin

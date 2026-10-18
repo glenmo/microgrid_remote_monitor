@@ -26,7 +26,7 @@ Deployment happens by `git pull --ff-only` + `sudo systemctl restart <unit>` ove
 | Host | Repo | Unit |
 | --- | --- | --- |
 | `rubberduck` (site Pi) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`app.py`), `microgrid-pusher.service` |
-| `kitty` (SP Pro USB Pi) | `~/microgrid_remote_monitor` | `sppro-pusher.service` |
+| `sunny` (SP Pro USB Pi, Pi 3; replaced kitty 2026-10-18, code still in `kitty/`) | `~/microgrid_remote_monitor` | `sppro-pusher.service` |
 | `pignus` (VPS, `pignus.arachnoid.net.au`) | `~/microgrid_remote_monitor` | `microgrid-monitor.service` (`server/server_app.py`), `comfort-monitor.service` (`comfort_monitor/app.py`, :8125, `/comfort/`), `dacha-monitor.service` (`dacha_monitor/app.py`, :8126, `/dacha/`), `studio-monitor.service` (`studio_monitor/app.py`, :8127, `/studio/`), `octagon-monitor.service` (`octagon_monitor/app.py`, :8128, `/octagon/`), `weather-monitor.service` (`weather_monitor/app.py`, :8130, `/weather/`) |
 | `desky` (SMA WebBox FTP target) | `~/microgrid_remote_monitor` | `tracker-analysis.service` (`tracker_analysis/app.py`, :8901), `weather-push.service` (`tracker_analysis/weather_push.py`) |
 
@@ -42,8 +42,8 @@ Data flows one way: **devices → readers (rubberduck `app.py`) → dashboard + 
   - Solis: SolisCloud API if `--solis-cloud-key-id/-secret/-sn` are all given, otherwise local Modbus TCP.
   - SP Pro: `--sppro-source {auto,sx,modbus,push}`. `push` is the current production path. `sx` uses selpi over the Lantronix TCP bridge (legacy fallback). `auto` picks `sx` if a password is set, otherwise `modbus`.
   - Solis and Eastron can share one `ModbusTcpClient` plus lock when they're on the same gateway.
-- **SwitchDin is retired.** It no longer monitors the SP Pro. All SP Pro data now comes from kitty over selpi (below). `switchdin_reader.py`, `SwitchDinReader`, the `--switchdin-*` flags and `/api/switchdin/*` are still in the code but are legacy, so don't build new features on them.
-- **kitty path (SP Pro over USB, production)**: `kitty/sppro_pusher.py` runs on a separate Pi cabled by USB to the SP Pro. It reuses `SPProSxReader(transport="serial")` and POSTs `{"data":…, "status":…}` to rubberduck `/api/sppro/ingest`, which feeds `SPProPushReceiver` (optional `X-Ingest-Token`). See `kitty/README.md` for why a TCP serial bridge was abandoned.
+- **SwitchDin is retired.** It no longer monitors the SP Pro. All SP Pro data now comes from the SP Pro USB Pi (sunny; kitty until 2026-10-18) over selpi (below). `switchdin_reader.py`, `SwitchDinReader`, the `--switchdin-*` flags and `/api/switchdin/*` are still in the code but are legacy, so don't build new features on them.
+- **kitty path (SP Pro over USB, production)**: `kitty/sppro_pusher.py` runs on a separate Pi cabled by USB to the SP Pro (sunny since 2026-10-18). It reuses `SPProSxReader(transport="serial")` and POSTs `{"data":…, "status":…}` to rubberduck `/api/sppro/ingest`, which feeds `SPProPushReceiver` (optional `X-Ingest-Token`). See `kitty/README.md` for why a TCP serial bridge was abandoned.
 - **selpi**: `vendor/selpi/` is a vendored copy of the Selectronic Sx-protocol library. `sppro_sx_reader.py` adds it to `sys.path`. It's edited locally (e.g. `statistics.py` emits extra fields), so treat it as project code, not pristine upstream.
 - **`data_pusher.py` (rubberduck)** polls the local Flask API (`/api/data`, `/api/eastron/data`, `/api/sppro/data`) and POSTs the result to the VPS. SwitchDin isn't pushed, so the VPS has no `/api/switchdin/*` and shared templates must not depend on it.
 - **VPS (`server/server_app.py`, :8100 behind Apache)**: doesn't poll anything. It accepts `POST /api/push` (`X-API-Key` / `MONITOR_API_KEY`), appends to in-memory deques, and exposes the same `/api/...` shapes so the same templates work unchanged.

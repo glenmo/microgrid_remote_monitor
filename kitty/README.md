@@ -1,5 +1,8 @@
 # kitty — direct-USB SP Pro reader
 
+> Since 2026-10-18 this runs on **sunny** (Pi 3, `sunny.local` / Tailscale `sunny`), which replaced
+> kitty after kitty dropped off the network. Same service file, same `~/microgrid_remote_monitor` path.
+
 `kitty` (a Raspberry Pi cabled by USB into the SP Pro's **Advanced Comms Board**,
 CDC-ACM at `/dev/ttyACM0`) reads the SP Pro locally and **pushes** the telemetry
 to `rubberduck`, which stays the source of truth (Solis polling, dashboard, VPS
