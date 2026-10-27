@@ -60,6 +60,14 @@ sppro_history = deque(maxlen=MAX_HISTORY)
 last_push_time = None
 push_count = 0
 
+# Pushes keep arriving every minute even when the Pi's reader is down (it
+# re-sends its last good values), so freshness is judged by when each
+# device's own sample (_timestamp) last changed, not by the push time.
+# 10 min allows for SolisCloud's 5-minute sample interval.
+STALE_AFTER_S = 600
+sample_ts = {"solis": None, "sppro": None}          # last _timestamp seen
+sample_changed_at = {"solis": None, "sppro": None}  # datetime it last changed
+
 # API key for authenticating Pi pushes
 API_KEY = os.environ.get("MONITOR_API_KEY", "change-me-to-a-secret-key")
 
@@ -78,6 +86,40 @@ def require_api_key(f):
 # ---------------------------------------------------------------------------
 # Push endpoint — Pi sends data here
 # ---------------------------------------------------------------------------
+def _note_sample(device, data, now_dt):
+    """Record a pushed sample; return True if it is fresh (new and not flagged)."""
+    ts = data.get("_timestamp")
+    is_new = ts is None or ts != sample_ts[device]
+    if is_new:
+        sample_ts[device] = ts
+        sample_changed_at[device] = now_dt
+    return is_new and not data.get("_stale")
+
+
+def _sample_age_s(device):
+    changed = sample_changed_at[device]
+    return (datetime.now() - changed).total_seconds() if changed else None
+
+
+def _is_stale(device, data):
+    """Stale if the Pi flagged it, or its sample hasn't changed for STALE_AFTER_S
+    (which also covers the pushes stopping altogether)."""
+    if not data:
+        return True
+    age = _sample_age_s(device)
+    return bool(data.get("_stale")) or age is None or age > STALE_AFTER_S
+
+
+def _with_freshness(device, data):
+    d = dict(data)
+    if d:
+        stale = _is_stale(device, d)
+        d["_stale"] = stale
+        if stale:
+            d["_read_ok"] = False
+    return d
+
+
 def _signed_current(d, key, dir_key):
     """Solis Modbus battery current is a magnitude plus a direction flag
     (1 = discharging); return it signed, + = charging (None if absent)."""
@@ -105,6 +147,7 @@ def api_push():
         if "solis" in payload:
             latest_solis = payload["solis"]
             latest_solis["_received_at"] = now
+            solis_fresh = _note_sample("solis", latest_solis, now_dt)
             # SolisCloud data carries the inverter's own sample time
             # (_data_ts); use it, and skip re-pushes of the same sample.
             sample_ms = latest_solis.get("_data_ts") or now_ms
@@ -130,7 +173,8 @@ def api_push():
                 "battery2_voltage": latest_solis.get("battery2_voltage"),
                 "battery2_current": _signed_current(latest_solis, "battery2_current", "battery2_current_dir"),
             }
-            if not solis_history or solis_history[-1].get("t") != sample_ms:
+            # Don't chart the Pi's frozen last-good values as new readings.
+            if solis_fresh and (not solis_history or solis_history[-1].get("t") != sample_ms):
                 solis_history.append(hist_entry)
 
         if "eastron" in payload:
@@ -150,6 +194,7 @@ def api_push():
         if "sppro" in payload:
             latest_sppro = payload["sppro"]
             latest_sppro["_received_at"] = now
+            sppro_fresh = _note_sample("sppro", latest_sppro, now_dt)
             # Add to history
             hist_entry = {
                 "t": now_ms,
@@ -168,7 +213,8 @@ def api_push():
                 "battery_voltage": latest_sppro.get("battery_voltage"),
                 "battery_current": latest_sppro.get("battery_current"),
             }
-            sppro_history.append(hist_entry)
+            if sppro_fresh:
+                sppro_history.append(hist_entry)
 
         last_push_time = now
         push_count += 1
@@ -204,7 +250,7 @@ def api_message():
 @app.route("/api/data")
 def api_solis_data():
     with data_lock:
-        return jsonify(latest_solis)
+        return jsonify(_with_freshness("solis", latest_solis))
 
 
 @app.route("/api/eastron/data")
@@ -250,7 +296,7 @@ def api_eastron_history():
 @app.route("/api/sppro/data")
 def api_sppro_data():
     with data_lock:
-        return jsonify(latest_sppro)
+        return jsonify(_with_freshness("sppro", latest_sppro))
 
 
 @app.route("/api/sppro/history")
@@ -299,8 +345,12 @@ def api_solis_status_alias():
                     connected = False
             except Exception:
                 pass
+        stale = _is_stale("solis", latest_solis)
+        age_s = _sample_age_s("solis")
         return jsonify({
-            "connected": connected,
+            "connected": connected and not stale,
+            "stale": stale,
+            "sample_age_s": round(age_s, 1) if age_s is not None else None,
             "host": "(pushed via mooramoora.org.au)",
             "inverter_ip": "192.168.11.214",
             "last_read": last,
@@ -321,8 +371,12 @@ def api_sppro_status_alias():
                     connected = False
             except Exception:
                 pass
+        stale = _is_stale("sppro", latest_sppro)
+        age_s = _sample_age_s("sppro")
         return jsonify({
-            "connected": connected,
+            "connected": connected and not stale,
+            "stale": stale,
+            "sample_age_s": round(age_s, 1) if age_s is not None else None,
             "host": "(pushed via mooramoora.org.au)",
             "inverter_ip": "192.168.11.240",
             "last_read": last,
@@ -336,9 +390,9 @@ def api_status():
         return jsonify({
             "last_push": last_push_time,
             "push_count": push_count,
-            "solis_connected": bool(latest_solis),
+            "solis_connected": not _is_stale("solis", latest_solis),
             "eastron_connected": bool(latest_eastron),
-            "sppro_connected": bool(latest_sppro),
+            "sppro_connected": not _is_stale("sppro", latest_sppro),
             "solis_history_points": len(solis_history),
             "eastron_history_points": len(eastron_history),
             "sppro_history_points": len(sppro_history),

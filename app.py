@@ -653,10 +653,35 @@ class SolisModbusReader:
             self._thread.join(timeout=10)
         self.disconnect()
 
+    def _read_age_s(self):
+        """Seconds since the last good read, or None if there hasn't been one."""
+        if not self.last_read_time:
+            return None
+        return (datetime.now() - self.last_read_time).total_seconds()
+
+    def _is_stale(self, age_s):
+        # Same threshold as the poll-loop watchdog.
+        return age_s is None or age_s > max(30.0, 3.0 * self.poll_interval)
+
     def get_data(self):
-        """Return a copy of the current data."""
+        """Return a copy of the current data.
+
+        The last good values are kept when reads fail, so flag them: once they
+        are older than the watchdog threshold, ``_stale`` is True and
+        ``_read_ok`` is False, and consumers (data_pusher → VPS, noisy's EV
+        rules) can tell frozen values from live ones.
+        """
         with self.lock:
-            return dict(self.data)
+            d = dict(self.data)
+        if not d:
+            return d
+        age_s = self._read_age_s()
+        stale = self._is_stale(age_s)
+        d["_age_s"] = round(age_s, 1) if age_s is not None else None
+        d["_stale"] = stale
+        if stale:
+            d["_read_ok"] = False
+        return d
 
     def get_history(self):
         """Return a copy of the history data."""
@@ -665,8 +690,13 @@ class SolisModbusReader:
 
     def get_status(self):
         """Return connection/polling status."""
+        age_s = self._read_age_s()
+        stale = self._is_stale(age_s)
         return {
-            "connected": self.connected,
+            # An open socket that only returns errors isn't connected either.
+            "connected": self.connected and not stale,
+            "stale": stale,
+            "last_read_age_s": round(age_s, 1) if age_s is not None else None,
             "inverter_ip": self.inverter_ip,
             "inverter_port": self.inverter_port,
             "slave_id": self.slave_id,

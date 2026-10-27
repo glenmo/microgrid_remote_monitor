@@ -77,7 +77,14 @@ class SPProPushReceiver:
 
     def get_data(self):
         with self.lock:
-            return dict(self.data)
+            d = dict(self.data)
+            last = self._last_ingest_time
+        if not d:
+            return d
+        # Flag frozen values once kitty stops pushing (same rule as get_status).
+        age = (datetime.now() - last).total_seconds() if last else None
+        d["_stale"] = age is None or age > self.stale_after
+        return d
 
     def get_history(self):
         with self.lock:

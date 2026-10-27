@@ -532,6 +532,19 @@ hit and slow to recover from. Both are now handled inside `app.py`:
   read_errors=…`. Tail with `journalctl -u microgrid-monitor.service -f`
   to confirm the poll thread is alive and reading.
 
+- **Stale data is flagged, not hidden.** The reader keeps its last good
+  values when reads fail, so once `last_read_time` is past the watchdog
+  threshold `/api/data` returns `_stale: true`, `_read_ok: false` and
+  `_age_s`, and `/api/solis/status` returns `connected: false`,
+  `stale: true`. `/api/sppro/data` carries `_stale` too (kitty has stopped
+  pushing). The VPS judges freshness by when each device's `_timestamp`
+  last changed (or the Pi's `_stale` flag), not by the push time. Stale
+  devices show `connected: false` in `/api/solis/status`,
+  `/api/sppro/status` and `/api/status`, and their frozen values aren't
+  added to the VPS history. This was added after a two-day Solis outage
+  (from 25 Oct 2026) went unnoticed because the VPS kept showing the
+  frozen values as live.
+
 The same hardening (batched-where-applicable, isError-triggered
 reconnect, watchdog, heartbeat) is applied to `sppro_reader.py`.
 
