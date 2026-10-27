@@ -536,8 +536,8 @@ hit and slow to recover from. Both are now handled inside `app.py`:
   values when reads fail, so once `last_read_time` is past the watchdog
   threshold `/api/data` returns `_stale: true`, `_read_ok: false` and
   `_age_s`, and `/api/solis/status` returns `connected: false`,
-  `stale: true`. `/api/sppro/data` carries `_stale` too (kitty has stopped
-  pushing). The VPS judges freshness by when each device's `_timestamp`
+  `stale: true`. `/api/sppro/data` carries `_stale` too (the SP Pro USB Pi
+  has stopped pushing). The VPS judges freshness by when each device's `_timestamp`
   last changed (or the Pi's `_stale` flag), not by the push time. Stale
   devices show `connected: false` in `/api/solis/status`,
   `/api/sppro/status` and `/api/status`, and their frozen values aren't
